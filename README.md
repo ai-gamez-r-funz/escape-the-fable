@@ -119,3 +119,5 @@ Loading a manifest validates it; a level with problems opens in the workshop ins
 All props are currently built from primitives so the game ships with no binary assets.
 
 three.js is vendored in `vendor/` (MIT licence).
+
+Created using Claude Fable 5.2 model
