@@ -1,0 +1,11 @@
+{
+  "name": "escape-the-fable",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A mid-century escape room generator for the browser, built on three.js",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "node tests/logic.test.mjs"
+  }
+}
