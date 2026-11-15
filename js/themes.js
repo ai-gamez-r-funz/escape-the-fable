@@ -61,7 +61,7 @@ for (const id in THEMES) THEMES[id].id = id;
 export const THEME_IDS = Object.keys(THEMES);
 
 export const DIFFICULTY = {
-  easy: { name: 'Easy', locks: [3, 3], digits: [3, 3], cands: 4, cons: 2, merge: 0, sockets: [1, 1], torn: 0.15 },
-  medium: { name: 'Medium', locks: [4, 5], digits: [3, 4], cands: 5, cons: 2, merge: 1, sockets: [1, 2], torn: 0.35 },
-  hard: { name: 'Hard', locks: [6, 7], digits: [4, 4], cands: 6, cons: 3, merge: 2, sockets: [2, 3], torn: 0.5 },
+  easy: { name: 'Easy', locks: [3, 3], digits: [3, 3], cands: 4, cons: 2, merge: 0, sockets: [1, 1], torn: 0.15, split: 0.15, photo: 0.4 },
+  medium: { name: 'Medium', locks: [4, 5], digits: [3, 4], cands: 5, cons: 2, merge: 1, sockets: [1, 2], torn: 0.35, split: 0.4, photo: 0.75 },
+  hard: { name: 'Hard', locks: [6, 7], digits: [4, 4], cands: 6, cons: 3, merge: 2, sockets: [2, 3], torn: 0.5, split: 0.6, photo: 0.9 },
 };

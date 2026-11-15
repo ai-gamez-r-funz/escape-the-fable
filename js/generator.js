@@ -5,7 +5,7 @@
 import { RNG, hashStr, randomSeed } from './rng.js';
 import { CATALOG, rectOf, FRONT, overlap } from './catalog.js';
 import { THEMES, THEME_IDS, DIFFICULTY } from './themes.js';
-import { newLevel, addProp, setLock, setClueStyle, clearLock, removeProp, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP } from './levelops.js';
+import { newLevel, addProp, setLock, setClueStyle, setSplit, clearLock, removeProp, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP, addPhoto, removePhoto } from './levelops.js';
 import { checkLevel, checkLayout, snapToWall } from './manifest.js';
 
 const HOST_CAP = { desk: 3, lab_bench: 4, side_table: 1 };
@@ -20,11 +20,47 @@ export function generate(opts = {}) {
     const level = build(rng, theme, difficulty);
     if (!level || !layoutLevel(level, rng)) continue;
     if (!checkLevel(level).ok) continue;
+    if (rng.chance(DIFFICULTY[difficulty].photo)) hidePhoto(level, rng);
     level.seed = seed;
     level.gen = { seed, theme, difficulty };
     return level;
   }
   throw new Error('Could not generate a level for seed ' + seed);
+}
+
+// Adds the spot-the-difference layer: something that sat in an ordinary hiding spot moves into a
+// disturbed piece of furniture, and the photograph that gives it away takes its old place.
+export function hidePhoto(level, rng) {
+  const photo = addPhoto(level, rng);
+  if (!photo) return false;
+  const spots = level.photo.diffs.map((x) => propById(level, x.prop)).filter((p) => slotFor({ kind: 'key' }, p, level) === 'secret');
+  const movable = rng.shuffle(level.things.filter((t) => t.at && t.at.slot === 'hidden' && t.kind !== 'photo'));
+  if (!spots.length || !movable.length) { removePhoto(level); return false; }
+  const thing = movable[0], was = thing.at;
+  thing.at = { prop: rng.pick(spots).id, slot: 'secret' };
+  photo.at = was;
+  if (checkLevel(level).ok) return true;
+  thing.at = was; removePhoto(level);
+  return false;
+}
+
+// After the floor plan changes the old photograph no longer matches: take a new one and keep
+// whatever was hidden behind it in play.
+export function refreshPhoto(level, rng) {
+  if (!level.photo) return;
+  const old = level.things.find((t) => t.kind === 'photo'), at = old && old.at;
+  const secrets = level.things.filter((t) => t.at && t.at.slot === 'secret');
+  removePhoto(level);
+  const photo = addPhoto(level, rng);
+  const spots = photo ? level.photo.diffs.map((x) => propById(level, x.prop)).filter((p) => slotFor({ kind: 'key' }, p, level) === 'secret') : [];
+  if (photo) photo.at = at;
+  secrets.forEach((t, i) => {
+    if (spots[i]) { t.at = { prop: spots[i].id, slot: 'secret' }; return; }
+    const free = level.props.filter((p) => { const sl = slotFor(t, p); return sl && sl !== 'shown' && thingsAt(level, p.id, sl).length < SLOT_CAP[sl]; });
+    const pick = free.find((p) => at && p.id === at.prop && !photo) || free.sort((x, y) => thingsAt(level, x.id).length - thingsAt(level, y.id).length)[0];
+    t.at = pick ? { prop: pick.id, slot: slotFor(t, pick) } : null;
+  });
+  if (photo && !level.things.some((t) => t.at && t.at.slot === 'secret')) removePhoto(level);
 }
 
 function build(rng, themeId, difficulty) {
@@ -43,17 +79,18 @@ function build(rng, themeId, difficulty) {
 
   function lockUp(prop, type, mustFeed) {
     if (type === 'digits' || type === 'dial') {
-      let style = rng.chance(D.torn) ? 'torn' : 'plain', host = null;
+      // written-out answers are rare: codes arrive torn in two, or as code-breaker lines to reason out
+      let style = rng.chance(type === 'dial' ? Math.max(0.65, D.torn) : D.torn) ? 'torn' : type === 'digits' ? 'logic' : 'plain', host = null;
       if (!mustFeed && rng.chance(0.55)) {
         const leafs = rng.shuffle(type === 'digits' ? ['clock', 'books', 'radio', 'inscribed'] : ['inscribed']);
         for (const s of leafs) { host = s === 'inscribed' ? inscribeHost() : featureHost(s); if (host) { style = s; break; } }
       }
-      setLock(level, prop, type, rng, { style: style === 'inscribed' ? 'plain' : style });
+      setLock(level, prop, type, rng, { style: style === 'inscribed' ? (type === 'digits' ? 'logic' : 'plain') : style });
       const made = thingsFor(level, prop.id);
       if (host) show(made[0], host); else pending.push(...made);
       return true;
     }
-    if (!setLock(level, prop, type, rng)) return false;
+    if (!setLock(level, prop, type, rng, { split: (type === 'key' || type === 'tool') && rng.chance(D.split) })) return false;
     for (const t of thingsFor(level, prop.id)) {
       const host = t.kind === 'clue' && rng.chance(t.style === 'codebook' ? 0.4 : 0.3) ? inscribeHost() : null;
       if (host) show(t, host); else pending.push(t);
@@ -237,7 +274,7 @@ const clone = (l) => JSON.parse(JSON.stringify(l));
 const relocate = (level, rng, thing) => {
   const spots = rng.shuffle(level.props.filter((p) => {
     const s = slotFor(thing, p);
-    return s && s !== 'shown' && !(thing.at && thing.at.prop === p.id) && thingsAt(level, p.id, s).length < (s === 'hidden' ? 1 : 2);
+    return s && s !== 'shown' && s !== 'secret' && !(thing.at && thing.at.prop === p.id) && thingsAt(level, p.id, s).length < (s === 'hidden' ? 1 : 2);
   }));
   // prefer spots that are not being used yet
   spots.sort((a, b) => thingsAt(level, a.id).length - thingsAt(level, b.id).length);
@@ -261,15 +298,15 @@ export const SCAMPER = {
     }
     return swaps > 0 && layoutLevel(level, rng);
   } },
-  C: { name: 'Combine', tip: 'Tear a note in two so both halves must be combined', run(level, rng) {
-    const p = rng.shuffle(level.props.filter((q) => q.lock && ['digits', 'dial'].includes(q.lock.type) && q.lock.style === 'plain' && thingsFor(level, q.id)[0].at.slot !== 'shown'))[0];
+  C: { name: 'Combine', tip: 'Break a key or tear a note in two, so two finds must be combined', run(level, rng) {
+    const p = rng.shuffle(level.props.filter((q) => q.lock && ((['digits', 'dial'].includes(q.lock.type) && ['plain', 'logic'].includes(q.lock.style) && thingsFor(level, q.id)[0].at.slot !== 'shown') || (['key', 'tool'].includes(q.lock.type) && !q.lock.split))))[0];
     if (!p) return false;
-    const [, b] = setClueStyle(level, p, 'torn', rng);
+    const [, b] = ['key', 'tool'].includes(p.lock.type) ? setSplit(level, p, true) : setClueStyle(level, p, 'torn', rng);
     return relocate(level, rng, b);
   } },
   A: { name: 'Adapt', tip: 'Adapt a written code into the room itself: a clock, a bookshelf, a radio dial', run(level, rng) {
     const T = THEMES[level.theme];
-    for (const p of rng.shuffle(level.props.filter((q) => q.lock && q.lock.type === 'digits' && ['plain', 'torn'].includes(q.lock.style)))) {
+    for (const p of rng.shuffle(level.props.filter((q) => q.lock && q.lock.type === 'digits' && ['plain', 'torn', 'logic'].includes(q.lock.style) && thingsFor(level, q.id).every((t) => t.at.slot !== 'shown')))) {
       for (const style of rng.shuffle(['clock', 'books', 'radio'])) {
         if (level.things.some((t) => t.style === style)) continue;
         const hostType = rng.shuffle(T.props.filter((t) => CATALOG[t].feature === style))[0];
@@ -288,7 +325,7 @@ export const SCAMPER = {
     return false;
   } },
   M: { name: 'Modify', tip: 'Magnify the challenge: longer codes, harder tray, an extra word clue', run(level, rng) {
-    const opts = rng.shuffle(level.props.filter((q) => q.lock && (q.lock.type === 'merge' || q.lock.type === 'wheel' || (q.lock.type === 'digits' && q.lock.code.length === 3 && ['plain', 'torn'].includes(q.lock.style)))));
+    const opts = rng.shuffle(level.props.filter((q) => q.lock && (q.lock.type === 'merge' || q.lock.type === 'wheel' || (q.lock.type === 'digits' && q.lock.code.length === 3 && ['plain', 'torn', 'logic'].includes(q.lock.style)))));
     const p = opts[0];
     if (!p) return false;
     if (p.lock.type === 'digits') { p.lock.code = ''; p.lock.n = 4; const at = thingsFor(level, p.id).map((t) => t.at); setClueStyle(level, p, p.lock.style, rng).forEach((t, i) => (t.at = at[i])); return true; }
@@ -330,7 +367,7 @@ export function scamper(level, op, seed = randomSeed()) {
     const copy = clone(level);
     delete copy.gen;
     const rng = new RNG(hashStr(`${op}/${seed}/${i}`));
-    try { if (SCAMPER[op].run(copy, rng) && checkLevel(copy).ok) return copy; } catch (e) { /* try another variation */ }
+    try { if (SCAMPER[op].run(copy, rng)) { refreshPhoto(copy, rng); if (checkLevel(copy).ok) return copy; } } catch (e) { /* try another variation */ }
   }
   return null;
 }

@@ -58,6 +58,12 @@ export const shapeSVG = (tier, size = 28) => `<svg width="${size}" height="${siz
 
 export function thingIcon(t, info, size = 30) {
   if (t.kind === 'shape') return shapeSVG(info.tier, size);
+  if (t.kind === 'photo') return `<svg width="${size}" height="${size}" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" fill="#f3ecd8" stroke="#5a431a"/><rect x="4.5" y="6" width="15" height="10.5" fill="#b89a6a"/><path d="M4.5 16.5L9.5 11L13 14.5L15.5 12L19.5 16.5Z" fill="#6e5636"/><circle cx="16" cy="9" r="1.4" fill="#f3ecd8"/></svg>`;
+  if (t.half) {
+    const col = t.kind === 'key' ? '#b8923a' : '#8d9698';
+    const whole = t.kind === 'key' ? '<circle cx="7" cy="12" r="5.6"/><path d="M12 10.8H22.5V13.2H20.5V16H18.4V13.2H16.6V15H14.6V13.2H12Z"/>' : t.tool === 'crowbar' ? '<path d="M3 21.5L5 23L18 8C19 6.5 20.5 6.5 20.5 8.5H22.5C22.5 3.5 18 3 16 6Z"/>' : '<path d="M2.5 20L4 21.5L12 13.5L10.5 12ZM10 13L13 10L20 3C22 1.5 23.5 4.5 21.5 6L14 13.5Z"/>';
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24"><defs><clipPath id="h${t.id}"><path d="${t.half === 'a' ? 'M0 0H13L11 6L14 11L10.5 16L13 24H0Z' : 'M24 0H13L11 6L14 11L10.5 16L13 24H24Z'}"/></clipPath></defs><g fill="${col}" opacity=".22">${whole}</g><g fill="${col}" stroke="#3a2d1c" stroke-width=".8" clip-path="url(#h${t.id})">${whole}</g><path d="M13 0L11 6L14 11L10.5 16L13 24" fill="none" stroke="#c8473c" stroke-width="1" stroke-dasharray="2 1.5"/></svg>`;
+  }
   if (t.kind === 'key') return `<svg width="${size}" height="${size}" viewBox="0 0 24 24"><g fill="#b8923a" stroke="#5a431a" stroke-width=".8"><circle cx="7" cy="12" r="5.6"/><path d="M12 10.8H22.5V13.2H20.5V16H18.4V13.2H16.6V15H14.6V13.2H12Z"/></g><g transform="translate(3.4 8.4) scale(.3)"><path fill="${SYMBOLS[info.symbol].color}" stroke="#fff" stroke-width="1.5" fill-rule="evenodd" d="${SYMBOLS[info.symbol].path}"/></g></svg>`;
   if (t.kind === 'tool') return t.tool === 'crowbar'
     ? `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#4a5154" stroke-width="2.6" stroke-linecap="round"><path d="M4 21L17 6C18.5 4 21 4 21 7"/><path d="M4 21L2.5 18.5" /></svg>`
