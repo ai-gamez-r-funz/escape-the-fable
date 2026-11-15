@@ -4,17 +4,17 @@ import { CATALOG, LOCK_NAMES, rectOf, FRONT } from './catalog.js';
 import { THEMES, THEME_IDS, DIFFICULTY } from './themes.js';
 import { SYMBOLS, SYMBOL_IDS } from './symbols.js';
 import { RNG, randomSeed } from './rng.js';
-import { newLevel, addProp, removeProp, setLock, clearLock, setClueStyle, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP, codeFits } from './levelops.js';
+import { newLevel, addProp, removeProp, setLock, clearLock, setClueStyle, setSplit, makeRows, addPhoto, removePhoto, photoDiff, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP, codeFits } from './levelops.js';
 import { checkLevel, thingInfo, lockSummary, propName, snapToWall, wallOf, cleanLevel, parseLevel, encodeShare, solve } from './manifest.js';
-import { generate, layoutLevel, scamper, SCAMPER } from './generator.js';
+import { generate, layoutLevel, scamper, SCAMPER, refreshPhoto, hidePhoto } from './generator.js';
 import { isWord } from './words.js';
 import { TIERS } from './mergepuzzle.js';
 import { el, $, toast, symbolSVG } from './ui.js';
 
 const ROLE_COLOR = { container: '#d9a21b', hide: '#2f8f9c', clue: '#8a63b5', exit: '#c8473c', decor: '#9c9280' };
 const roleOf = (c) => (c.container ? (c.container.exit ? 'exit' : 'container') : c.hide ? 'hide' : c.inscribe || c.feature ? 'clue' : 'decor');
-const STYLE_NAMES = { plain: 'Written note', torn: 'Note torn in two halves', clock: 'Stopped clock', books: 'Book count on a shelf', radio: 'Radio dial frequency' };
-const SLOT_WORD = { holds: 'Inside the', hidden: 'Hidden at the', shown: 'Written on the' };
+const STYLE_NAMES = { logic: 'Code-breaker lines (deduce it)', plain: 'Written out in full', torn: 'Note torn in two halves', clock: 'Stopped clock', books: 'Book count on a shelf', radio: 'Radio dial frequency' };
+const SLOT_WORD = { holds: 'Inside the', hidden: 'Hidden at the', shown: 'Written on the', secret: 'Secretly in the disturbed' };
 const STORE = 'escape-the-fable/workshop';
 
 export class Editor {
@@ -88,8 +88,12 @@ export class Editor {
   edit(fn, { quiet } = {}) {
     this.history.push(JSON.stringify(this.level));
     if (this.history.length > 60) this.history.shift();
+    const plan = () => JSON.stringify([this.level.room, this.level.props.map((p) => [p.id, p.type, p.x, p.z, p.rot])]);
+    const before = plan();
     fn();
     delete this.level.gen;
+    // moving furniture makes the old photograph wrong: take a fresh one
+    if (this.level.photo && plan() !== before) { placeTops(this.level); refreshPhoto(this.level, this.rng); if (!this.level.photo) toast('The photograph puzzle no longer worked with this floor plan and was removed.', 5000); }
     if (!quiet) this.refresh();
   }
   undo() {
@@ -221,7 +225,7 @@ export class Editor {
   }
   spotsFor(t) {
     const L = this.level;
-    return L.props.map((p) => ({ prop: p, slot: slotFor(t, p) })).filter((s) => s.slot && (thingsAt(L, s.prop.id, s.slot).filter((x) => x !== t).length < SLOT_CAP[s.slot]));
+    return L.props.map((p) => ({ prop: p, slot: slotFor(t, p, L) })).filter((s) => s.slot && (thingsAt(L, s.prop.id, s.slot).filter((x) => x !== t).length < SLOT_CAP[s.slot]));
   }
   setLockType(p, type) {
     this.edit(() => {
@@ -333,7 +337,7 @@ export class Editor {
   up() {
     const D = this.drag;
     this.drag = null;
-    if (D && D.moved) { this.history.push(D.snap); delete this.level.gen; this.refresh(); }
+    if (D && D.moved) { this.history.push(D.snap); delete this.level.gen; if (this.level.photo) refreshPhoto(this.level, this.rng); this.refresh(); }
   }
   key(e) {
     if ($('#editor').hidden || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
@@ -346,6 +350,7 @@ export class Editor {
   // ---------------------------------------------------------------- side panel
   thingRow(t) {
     const L = this.level, info = thingInfo(L, t);
+    if (t.style === 'logic') info.lines = [propById(L, t.for).lock.rows.map((r) => r.g).join(', ')];
     const sel = el('select', { onchange: (e) => this.edit(() => { const [pid, slot] = e.target.value.split('/'); t.at = pid ? { prop: pid, slot } : null; }) },
       el('option', { value: '' }, '— not placed yet —'),
       this.spotsFor(t).concat(t.at && !this.spotsFor(t).some((s) => s.prop.id === t.at.prop) && propById(L, t.at.prop) ? [{ prop: propById(L, t.at.prop), slot: t.at.slot }] : []).map((s) => el('option', { value: s.prop.id + '/' + s.slot }, `${SLOT_WORD[s.slot]} ${propName(s.prop)}`)));
@@ -370,7 +375,8 @@ export class Editor {
       kids.push(el('div', { class: 'field' }, el('span', {}, 'Clue type'), styleSel));
     }
     if (lock.type === 'digits') {
-      kids.push(el('div', { class: 'field' }, el('span', {}, 'Code'), el('input', { type: 'text', value: lock.code, maxlength: 4, inputmode: 'numeric', onchange: (e) => { const v = e.target.value.trim(), bad = codeFits(lock.style, v); if (bad) { toast(bad, 5000); e.target.value = lock.code; return; } this.edit(() => { lock.code = v; if (lock.colors) lock.colors = ['red', 'blue', 'green', 'yellow'].slice(0, v.length); }); } })));
+      kids.push(el('div', { class: 'field' }, el('span', {}, 'Code'), el('input', { type: 'text', value: lock.code, maxlength: 4, inputmode: 'numeric', onchange: (e) => { const v = e.target.value.trim(), bad = codeFits(lock.style, v); if (bad) { toast(bad, 5000); e.target.value = lock.code; return; } this.edit(() => { lock.code = v; if (lock.colors) lock.colors = ['red', 'blue', 'green', 'yellow'].slice(0, v.length); if (lock.style === 'logic') { let rows = null; for (let i = 0; i < 30 && !rows; i++) rows = makeRows(this.rng, v); lock.rows = rows || []; } }); } })));
+      if (lock.style === 'logic') kids.push(el('p', { class: 'tiny' }, `${lock.rows.length} guess lines with ●/○ feedback that leave only this code. `, el('button', { class: 'linkish', onclick: () => this.edit(() => { lock.rows = makeRows(this.rng, lock.code) || lock.rows; }) }, 'New lines')));
     } else if (lock.type === 'dial') {
       kids.push(el('div', { class: 'field' }, el('span', {}, 'R · L · R'), el('div', { class: 'triple' }, lock.combo.map((v, i) => el('input', { type: 'number', min: 0, max: 39, value: v, onchange: (e) => this.edit(() => { lock.combo[i] = Math.max(0, Math.min(39, Math.round(+e.target.value) || 0)); }) })))));
     } else if (lock.type === 'wheel') {
@@ -381,6 +387,11 @@ export class Editor {
       const b = lock.board;
       const regen = (lv) => this.edit(() => { const places = thingsFor(L, p.id).map((t) => t.at); setLock(L, p, 'merge', this.rng, { symbol: lock.symbol, level: lv }); thingsFor(L, p.id).forEach((t, i) => { t.at = places[i] || null; }); this.autoPlace(p); });
       kids.push(el('p', { class: 'tiny' }, `${b.pieces.length} solids on a ${b.w}×${b.h} tray → one ${TIERS[b.target].toLowerCase()}, solvable in ${b.par} moves.`), el('div', {}, 'New tray: ', ['Easy', 'Medium', 'Hard'].map((n, i) => el('button', { class: 'linkish', style: 'margin-right:.7em', onclick: () => regen(i) }, n))));
+    }
+    if (lock.type === 'key' || lock.type === 'tool') {
+      const box = el('input', { type: 'checkbox', onchange: (e) => this.edit(() => { setSplit(L, p, e.target.checked); this.autoPlace(p); }) });
+      box.checked = !!lock.split;
+      kids.push(el('label', { class: 'tiny', style: 'display:flex;gap:.5em;align-items:center;margin:.5em 0' }, box, `Broken in two halves the player must find and join`));
     }
     const needs = thingsFor(L, p.id);
     if (needs.length) kids.push(el('h4', {}, 'Needed to open it'), ...needs.map((t) => this.thingRow(t)));
@@ -396,11 +407,17 @@ export class Editor {
         el('h3', {}, el('span', { class: 'grow' }, c.name), el('button', { class: 'btn small', onclick: () => this.rotate() }, 'Rotate'), el('button', { class: 'btn small', onclick: () => this.remove() }, 'Delete')),
         el('p', { class: 'tiny' }, c.container ? (c.container.exit ? 'The way out. Opening it wins the game.' : 'A container: it can be locked and things can be placed inside.') : c.hide ? `A hiding spot ("${c.hide}").` : c.inscribe ? 'A writing surface: it can display a written clue.' : c.feature ? `Can display a code as a ${c.feature === 'books' ? 'count of coloured books' : c.feature === 'clock' ? 'stopped time' : 'radio frequency'}.` : c.host ? 'Furniture. Table-top pieces can sit on it.' : 'Decoration.'),
         c.container ? this.lockCard(p) : null,
-        here.length ? [el('h4', {}, 'Placed here'), ...here.map((t) => { const owner = propById(L, t.for); return el('div', { class: 'thing' }, el('b', { html: (owner.lock.symbol ? symbolSVG(owner.lock.symbol, 16) + ' ' : '') + thingInfo(L, t).name }), el('span', { class: 'tiny' }, `for the ${propName(owner)} · `), el('button', { class: 'linkish', onclick: () => this.edit(() => { t.at = null; }) }, 'take out')); })] : null));
+        photoDiff(L, p.id) ? el('p', { class: 'tiny' }, '📷 Disturbed since the photograph was taken' + (L.photo.diffs.find((x) => x.prop === p.id).gone ? ' (it is missing from the photo).' : ' (it stands elsewhere in the photo).')) : null,
+        here.length ? [el('h4', {}, 'Placed here'), ...here.map((t) => { const owner = propById(L, t.for); return el('div', { class: 'thing' }, el('b', { html: (owner && owner.lock.symbol ? symbolSVG(owner.lock.symbol, 16) + ' ' : '') + thingInfo(L, t).name }), el('span', { class: 'tiny' }, owner ? `for the ${propName(owner)} · ` : ''), el('button', { class: 'linkish', onclick: () => this.edit(() => { t.at = null; }) }, 'take out')); })] : null));
     } else out.push(el('div', { class: 'card' }, el('h3', {}, 'Nothing selected'), el('p', { class: 'tiny' }, 'Select a piece on the plan to give it a lock or see what is hidden in it. Gold pieces are containers, teal are hiding spots, purple show clues.')));
     // puzzle chain
     const locked = L.props.filter((q) => q.lock);
     out.push(el('div', { class: 'card' }, el('h3', {}, 'Puzzle chain'), locked.length ? locked.map((q) => { const miss = thingsFor(L, q.id).filter((t) => !t.at).length; return el('div', { class: 'chain', onclick: () => { this.sel = q.id; this.refresh(); } }, el('span', { html: q.lock.symbol ? symbolSVG(q.lock.symbol, 20) : '🔧' }), el('b', {}, CATALOG[q.type].name), el('small', {}, miss ? el('span', { class: 'err', style: 'color:#9c2b21' }, `${miss} unplaced`) : `${LOCK_NAMES[q.lock.type]} · ${lockSummary(L, q)}`)); }) : el('p', { class: 'tiny' }, 'No locks yet.')));
+    // photograph puzzle
+    const photo = L.things.find((t) => t.kind === 'photo');
+    out.push(el('div', { class: 'card' }, el('h3', {}, el('span', { class: 'grow' }, 'Photograph puzzle'), L.photo ? el('button', { class: 'btn small', onclick: () => this.edit(() => removePhoto(L)) }, 'Remove') : el('button', { class: 'btn small', onclick: () => this.addPhoto() }, 'Add')),
+      L.photo && photo ? [el('p', { class: 'tiny' }, `An old photo of the room. Disturbed since: ${L.photo.diffs.map((x) => propName(propById(L, x.prop))).join(', ')}. Once the player spots all three, disturbed decor can be searched; place things "secretly" in it.`), this.thingRow(photo)]
+        : el('p', { class: 'tiny' }, 'Spot the difference: an old photo shows the room before three pieces of furniture were disturbed. Finding them reveals a secret hiding place.')));
     // SCAMPER
     const tip = el('p', { class: 'scamper-tip' }, 'Remix the room with one idea at a time. Each remix keeps the room solvable.');
     out.push(el('div', { class: 'card' }, el('h3', {}, 'Remix (SCAMPER)'), el('div', { class: 'scamper' }, Object.keys(SCAMPER).map((k) => el('button', { title: `${SCAMPER[k].name}: ${SCAMPER[k].tip}`, onmouseenter: () => { tip.innerHTML = `<b>${SCAMPER[k].name}.</b> ${SCAMPER[k].tip}.`; }, onclick: () => this.remix(k) }, k))), tip));
@@ -412,6 +429,12 @@ export class Editor {
       R.ok ? el('button', { class: 'linkish', onclick: () => { this.spoilers = !this.spoilers; this.renderSide(); } }, this.spoilers ? 'Hide the solution' : 'Show the solution (spoilers)') : null,
       R.ok && this.spoilers ? el('ol', {}, R.steps.map((s) => el('li', {}, s.text))) : null));
     this.right.replaceChildren(...out.flat());
+  }
+  addPhoto() {
+    if (!this.result.ok) return toast('Fix the problems listed under Check first.');
+    let ok = false;
+    this.edit(() => { ok = hidePhoto(this.level, this.rng); });
+    if (!ok) { this.history.pop(); toast('No good photograph here: the room needs free-standing decor (a chair, stool or lamp) in clear view, and something sitting in an ordinary hiding spot to move behind the puzzle.', 7000); }
   }
   remix(op) {
     if (!this.result.ok) return toast('Fix the problems listed under Check before remixing.');

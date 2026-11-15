@@ -4,7 +4,7 @@ import { SYMBOLS } from './symbols.js';
 import { textC, remaining } from './words.js';
 import { TIERS, solveMerge } from './mergepuzzle.js';
 import { THEMES } from './themes.js';
-import { FORMAT, propById, thingsFor, thingsAt, codeFits, slotFor, SLOT_CAP, placeTops } from './levelops.js';
+import { FORMAT, propById, thingsFor, thingsAt, codeFits, slotFor, SLOT_CAP, placeTops, logicSolutions, photoDiff } from './levelops.js';
 
 export const propName = (p) => CATALOG[p.type].name.toLowerCase();
 const symName = (lock) => (lock && lock.symbol ? SYMBOLS[lock.symbol].name : '');
@@ -12,10 +12,18 @@ export const clockText = (code) => `${+code.slice(0, -2)}:${code.slice(-2)}`;
 const dialText = (c) => `Right to ${c[0]}  ·  Left to ${c[1]}  ·  Right to ${c[2]}`;
 
 // Human description of any thing: { name, title, lines[], symbol, note }
+export const logicLine = (r) => `${r.g.split('').join(' ')}    ${r.hit + r.near ? '●'.repeat(r.hit) + '○'.repeat(r.near) : 'none'}`;
 export function thingInfo(level, t) {
+  if (t.kind === 'photo') return { name: 'Old photograph', title: 'Old photograph', lines: ['A photograph of this very room, taken some time ago.', 'Three things have been disturbed since. Study it in your notebook.'] };
   const owner = propById(level, t.for);
   const lock = owner && owner.lock;
   const symbol = lock && lock.symbol;
+  if (t.half) {
+    const whole = t.kind === 'key' ? `${symName(lock).toLowerCase()} key` : TOOLS[t.tool].toLowerCase();
+    const part = t.kind === 'key' ? (t.half === 'a' ? 'bow' : 'blade') : t.half === 'a' ? 'handle' : t.tool === 'crowbar' ? 'claw' : 'blade';
+    const name = `${whole[0].toUpperCase() + whole.slice(1)} ${part}`;
+    return { name, title: name, symbol, lines: [`One half of a broken ${whole}. On its own it is useless, but it would join to the other half.`] };
+  }
   if (t.kind === 'key') return { name: `${symName(lock)} key`, title: `${symName(lock)} key`, symbol, lines: [`A key with a ${symName(lock).toLowerCase()} stamped into its bow. It will fit the lock that carries the same mark.`] };
   if (t.kind === 'tool') return { name: TOOLS[t.tool], title: TOOLS[t.tool], lines: [t.tool === 'crowbar' ? 'A short iron crowbar. Good for anything nailed shut.' : 'A flat-bladed screwdriver. Good for anything screwed down.'] };
   if (t.kind === 'shape') {
@@ -30,6 +38,10 @@ export function thingInfo(level, t) {
     case 'plain':
       info.title = shown ? 'Writing' : 'Handwritten note';
       info.lines = lock.type === 'dial' ? ['Combination:', dialText(lock.combo)] : ['Combination:', code.split('').join(' – ')];
+      break;
+    case 'logic':
+      info.title = shown ? 'Code-breaker lines' : 'Code-breaker card';
+      info.lines = ['Every digit of the code is different.', ...lock.rows.map(logicLine), '●  right digit, right place', '○  right digit, wrong place'];
       break;
     case 'tornA':
       info.title = 'Torn note (first half)';
@@ -85,12 +97,13 @@ export function canUnlock(level, prop, known) {
   if (!lock) return { ok: true, missing: [] };
   const mine = thingsFor(level, prop.id);
   const have = (pred) => mine.some((t) => pred(t) && known.has(t.id));
+  const all = (kind) => { const k = mine.filter((t) => t.kind === kind); return k.length && k.every((t) => known.has(t.id)); };
   const missing = [];
-  if (lock.type === 'key') { if (!have((t) => t.kind === 'key')) missing.push(`the ${symName(lock).toLowerCase()} key`); }
-  else if (lock.type === 'tool') { if (!have((t) => t.kind === 'tool')) missing.push(`a ${TOOLS[CATALOG[prop.type].container.tool].toLowerCase()}`); }
+  if (lock.type === 'key') { if (!all('key')) missing.push(lock.split ? `both halves of the ${symName(lock).toLowerCase()} key` : `the ${symName(lock).toLowerCase()} key`); }
+  else if (lock.type === 'tool') { if (!all('tool')) missing.push(lock.split ? `both halves of the ${TOOLS[CATALOG[prop.type].container.tool].toLowerCase()}` : `a ${TOOLS[CATALOG[prop.type].container.tool].toLowerCase()}`); }
   else if (lock.type === 'digits' || lock.type === 'dial') {
     const st = (s) => have((t) => t.style === s);
-    if (!(st('plain') || st('clock') || st('books') || st('radio') || (st('tornA') && st('tornB')))) missing.push(mine.some((t) => t.style === 'tornA') ? 'both halves of the torn note' : 'the combination');
+    if (!(st('plain') || st('logic') || st('clock') || st('books') || st('radio') || (st('tornA') && st('tornB')))) missing.push(mine.some((t) => t.style === 'tornA') ? 'both halves of the torn note' : 'the combination');
   } else if (lock.type === 'wheel') {
     if (!have((t) => t.style === 'codebook')) missing.push('the list of code words');
     const cons = mine.filter((t) => t.style === 'constraint' && known.has(t.id)).map((t) => lock.constraints[t.idx]);
@@ -111,6 +124,8 @@ export function possibleActions(level, prog) {
     const shown = thingsAt(level, p.id, 'shown').filter((t) => !prog.known.has(t.id));
     if (shown.length) out.push({ type: 'observe', prop: p, gains: shown });
     if (cat.hide && !prog.searched.has(p.id)) { const g = thingsAt(level, p.id, 'hidden'); if (g.length) out.push({ type: 'search', prop: p, gains: g }); }
+    // disturbed furniture can only be searched once the photograph has given it away
+    if (photoDiff(level, p.id) && !prog.searched.has(p.id) && level.things.some((t) => t.kind === 'photo' && prog.known.has(t.id))) { const g = thingsAt(level, p.id, 'secret'); if (g.length) out.push({ type: 'secret', prop: p, gains: g }); }
     if (cat.container && !prog.opened.has(p.id) && canUnlock(level, p, prog.known).ok) {
       const g = thingsAt(level, p.id, 'holds');
       if (g.length || cat.container.exit) out.push({ type: 'open', prop: p, gains: g, exit: !!cat.container.exit });
@@ -120,7 +135,7 @@ export function possibleActions(level, prog) {
   return out.sort((a, b) => rank(a) - rank(b));
 }
 export function applyAction(prog, a) {
-  if (a.type === 'search') prog.searched.add(a.prop.id);
+  if (a.type === 'search' || a.type === 'secret') prog.searched.add(a.prop.id);
   if (a.type === 'open') prog.opened.add(a.prop.id);
   for (const t of a.gains) prog.known.add(t.id);
 }
@@ -130,6 +145,7 @@ function stepText(level, a) {
   const cat = CATALOG[a.prop.type];
   if (a.type === 'observe') return `Examine the ${propName(a.prop)}: ${thingInfo(level, a.gains[0]).lines.join(' ')}`;
   if (a.type === 'search') return `${cat.hide} → find ${names}.`;
+  if (a.type === 'secret') return `Compare the photograph with the room: the ${propName(a.prop)} has been disturbed. Search it → find ${names}.`;
   const how = a.prop.lock ? `Open the ${propName(a.prop)} (${lockSummary(level, a.prop)})` : `Open the ${propName(a.prop)}`;
   return a.exit ? `${how} and escape!` : `${how} → find ${names}.`;
 }
@@ -264,6 +280,7 @@ export function checkLevel(level) {
     if (l.type === 'digits') {
       const bad = codeFits(l.style, l.code || '');
       if (bad) errors.push(`${cat.name}: ${bad}`);
+      else if (l.style === 'logic' && logicSolutions(l.rows || [], l.code.length).join() !== l.code) errors.push(`${cat.name}: the code-breaker lines do not single out the code.`);
       if (codes.has(l.code)) warnings.push(`Two padlocks share the code ${l.code}.`);
       codes.set(l.code, p);
     }
@@ -276,14 +293,16 @@ export function checkLevel(level) {
     if (l.type === 'merge' && !solveMerge(l.board, l.board.pieces)) errors.push(`${cat.name}: the merge tray has no solution.`);
   }
   const load = {};
+  if (level.photo && !(level.photo.diffs || []).every((x) => propById(level, x.prop))) errors.push('The photograph shows furniture that no longer exists. Remove the photograph puzzle and add it again.');
+  if (!!level.photo !== level.things.some((t) => t.kind === 'photo')) errors.push('The photograph puzzle is incomplete. Remove it and add it again.');
   for (const t of level.things) {
     const owner = propById(level, t.for);
-    if (!owner || !owner.lock) { errors.push('A clue or item belongs to a lock that no longer exists.'); continue; }
+    if (t.kind !== 'photo' && (!owner || !owner.lock)) { errors.push('A clue or item belongs to a lock that no longer exists.'); continue; }
     const name = thingInfo(level, t).name;
-    if (!t.at) { errors.push(`"${name}" for the ${propName(owner)} has not been placed anywhere.`); continue; }
+    if (!t.at) { errors.push(t.kind === 'photo' ? 'The old photograph has not been placed anywhere.' : `"${name}" for the ${propName(owner)} has not been placed anywhere.`); continue; }
     const host = propById(level, t.at.prop);
     if (!host) { errors.push(`"${name}" is placed on a prop that no longer exists.`); continue; }
-    if (slotFor(t, host) !== t.at.slot) { errors.push(`"${name}" cannot be placed at the ${propName(host)}.`); continue; }
+    if (slotFor(t, host, level) !== t.at.slot) { errors.push(`"${name}" cannot be placed at the ${propName(host)}.`); continue; }
     const k = t.at.prop + '/' + t.at.slot;
     load[k] = (load[k] || 0) + 1;
     if (load[k] === SLOT_CAP[t.at.slot] + 1) errors.push(`Too many things are placed at the ${propName(host)}.`);
@@ -295,6 +314,8 @@ export function checkLevel(level) {
   if (sol.ok) {
     const idle = level.props.filter((p) => p.lock && !sol.prog.opened.has(p.id) && !canUnlock(level, p, sol.prog.known).ok);
     for (const p of idle) errors.push(`The ${propName(p)} can never be opened.`);
+    for (const t of level.things) if (t.at && !sol.prog.known.has(t.id) && propById(level, t.at.prop)) errors.push(`"${thingInfo(level, t).name}" can never be found where it is (${propName(propById(level, t.at.prop))}).`);
+    if (level.photo && !level.things.some((t) => t.at && t.at.slot === 'secret')) warnings.push('The photograph puzzle hides nothing yet: place something in a disturbed piece of furniture.');
   }
   return { ok: !errors.length, errors, warnings, steps: sol.steps, spawn: layout.spawn };
 }
@@ -315,7 +336,7 @@ export function parseLevel(text) {
   if (!THEMES[level.theme]) level.theme = 'detective';
   level.room = { w: Math.min(14, Math.max(4, +level.room.w || 7)), d: Math.min(14, Math.max(4, +level.room.d || 6)), h: 3 };
   level.props = level.props.filter((p) => p && CATALOG[p.type] && typeof p.id === 'string').map((p) => ({ ...p, x: +p.x || 0, z: +p.z || 0, rot: ((+p.rot || 0) % 4 + 4) % 4 }));
-  level.things = level.things.filter((t) => t && typeof t.id === 'string' && ['key', 'tool', 'shape', 'clue'].includes(t.kind));
+  level.things = level.things.filter((t) => t && typeof t.id === 'string' && ['key', 'tool', 'shape', 'clue', 'photo'].includes(t.kind));
   level.name = String(level.name || 'Untitled room').slice(0, 60);
   level.n = Math.max(level.n || 0, ...[...level.props, ...level.things].map((o) => +String(o.id).slice(1) || 0));
   return level;

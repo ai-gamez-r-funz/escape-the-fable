@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { CATALOG } from './catalog.js';
 import { THEMES } from './themes.js';
 import { SYMBOLS } from './symbols.js';
-import { propById, thingsFor, thingsAt } from './levelops.js';
+import { propById, thingsFor, thingsAt, photoDiff, canSecret } from './levelops.js';
+import { notebookUI, pending } from './notebook.js';
 import { thingInfo, propName, lockSummary, newProgress, canUnlock, possibleActions, checkLevel, encodeShare } from './manifest.js';
 import { World } from './world.js';
 import { Player } from './player.js';
@@ -24,6 +25,8 @@ export class Game {
     this.ray = new THREE.Raycaster();
     this.prog = newProgress();
     this.carry = []; this.notes = []; this.lockState = {}; this.hintLevel = {}; this.hints = 0;
+    // notebook work: solved code-breakers, pieced notes, joined halves, crossed-out words, photograph
+    this.worked = new Set(); this.pieced = new Set(); this.joined = new Set(); this.struck = {}; this.sheet = {}; this.photoFound = new Set(); this.photoDone = false;
     this.time = 0; this.won = false; this.started = false; this.target = null;
     this.totalLocks = level.props.filter((p) => p.lock).length;
     this.handlers = [];
@@ -44,11 +47,11 @@ export class Game {
       inv: el('div', { id: 'inv' }),
       timer: el('span', { class: 'timer' }, '0:00'),
       locks: el('span', { class: 'locks' }),
-      resume: el('div', { id: 'resume' }, el('div', {}, el('b', {}, 'Click to look around'), el('span', {}, 'WASD move · mouse look · E / click interact · N notebook · H hint · Esc release mouse'))),
+      resume: el('div', { id: 'resume' }, el('div', {}, el('b', {}, 'Click to look around'), el('span', {}, 'WASD move · mouse look · E / click interact · N notebook · I inventory · H hint · Esc release mouse'))),
     };
     hud.replaceChildren(
       el('div', { id: 'topbar' }, el('div', { class: 'title' }, el('b', {}, this.level.name), el('span', {}, `${this.theme.name}, ${this.theme.year}`)), this.ui.locks, this.ui.timer,
-        el('button', { class: 'btn small', onclick: () => this.notebook() }, 'Notebook (N)'), el('button', { class: 'btn small', onclick: () => this.hint() }, 'Hint (H)'), el('button', { class: 'btn small', onclick: () => this.quitPrompt() }, this.opts.fromEditor ? 'Back to workshop' : 'Menu')),
+        (this.ui.nb = el('button', { class: 'btn small', onclick: () => this.notebook() }, 'Notebook (N)')), (this.ui.ib = el('button', { class: 'btn small', onclick: () => this.notebook('items') }, 'Inventory (I)')), el('button', { class: 'btn small', onclick: () => this.hint() }, 'Hint (H)'), el('button', { class: 'btn small', onclick: () => this.quitPrompt() }, this.opts.fromEditor ? 'Back to workshop' : 'Menu')),
       el('div', { id: 'crosshair' }), this.ui.prompt, this.ui.inv, this.ui.resume);
     this.refreshHud();
   }
@@ -56,11 +59,32 @@ export class Game {
     if (!this.ui || this.dead) return;
     const done = this.level.props.filter((p) => p.lock && this.prog.opened.has(p.id)).length;
     this.ui.locks.textContent = `Locks opened ${done}/${this.totalLocks}`;
-    this.ui.inv.replaceChildren(...(this.carry.length ? this.carry.map((id) => { const t = this.thing(id), info = thingInfo(this.level, t); return el('button', { class: 'chip', title: info.lines[0], onclick: () => this.showThing(t) }, el('span', { html: thingIcon(t, info, 30) }), info.name); }) : [el('span', { class: 'empty' }, 'Pockets empty')]));
+    const items = this.items(), todo = pending(this);
+    this.ui.inv.replaceChildren(...(items.length ? items.map((it) => el('button', { class: 'chip' + (it.partner ? ' can' : ''), title: it.partner ? 'Can be joined with the ' + it.partner.name.toLowerCase() + ' (press I)' : it.info.lines[0], onclick: () => this.notebook('items') }, el('span', { html: thingIcon(it.t, it.info, 30) }), it.info.name, it.partner ? el('i', {}, '⚙') : null)) : [el('span', { class: 'empty' }, 'Pockets empty')]));
+    this.ui.nb.classList.toggle('ping', todo.notes > 0);
+    this.ui.ib.classList.toggle('ping', todo.items > 0);
     this.ui.resume.hidden = !this.started || this.won || modalOpen() || this.player.locked;
     $('#crosshair').hidden = !this.player.locked;
   }
   thing(id) { return this.level.things.find((t) => t.id === id); }
+  // What the player is carrying, as shown: joined halves appear as the whole object.
+  items() {
+    const out = [];
+    for (const id of this.carry) {
+      const t = this.thing(id);
+      if (t.half && this.joined.has(t.for)) { if (t.half === 'a') { const whole = { ...t, half: undefined }; out.push({ t: whole, info: thingInfo(this.level, whole) }); } continue; }
+      const mate = t.half && this.carry.map((x) => this.thing(x)).find((o) => o.for === t.for && o.kind === t.kind && o.half && o.half !== t.half);
+      out.push({ t, info: thingInfo(this.level, t), partner: mate ? thingInfo(this.level, mate) : null });
+    }
+    return out;
+  }
+  join(pid) {
+    this.joined.add(pid);
+    sfx('merge');
+    const t = thingsFor(this.level, pid).find((x) => x.half === 'a');
+    toast(`The two halves click together: you now have the ${thingInfo(this.level, { ...t, half: undefined }).name.toLowerCase()}.`);
+    this.refreshHud();
+  }
   say(msg) { toast(msg); }
 
   // ---------------------------------------------------------------- modals
@@ -89,41 +113,32 @@ export class Game {
   }
   paper(t, extra) {
     const info = thingInfo(this.level, t);
-    return el('div', { class: 'paper' + (t.kind === 'clue' && t.at.slot !== 'shown' ? ' note' : '') }, info.symbol ? el('span', { class: 'stamp', html: symbolSVG(info.symbol, 44), title: `Marked with a ${SYMBOLS[info.symbol].name.toLowerCase()}` }) : null,
+    return el('div', { class: 'paper' + (t.kind === 'clue' && t.at.slot !== 'shown' ? ' note' : '') + (t.style === 'logic' ? ' mono' : '') }, info.symbol ? el('span', { class: 'stamp', html: symbolSVG(info.symbol, 44), title: `Marked with a ${SYMBOLS[info.symbol].name.toLowerCase()}` }) : null,
       t.kind !== 'clue' ? el('span', { class: 'bigicon', html: thingIcon(t, info, 64) }) : null, el('h3', {}, info.title), ...info.lines.map((l) => el('p', {}, l)), extra || null);
   }
   showThing(t) { this.modal(el('div', {}, this.paper(t), el('button', { class: 'btn primary', autofocus: true, onclick: () => closeModal() }, 'OK'))); }
   found(things, heading) {
     sfx('found');
     this.modal(el('div', { class: 'found' }, el('p', { class: 'kicker' }, heading), el('h2', {}, things.length > 1 ? 'You found a few things' : 'You found something'), el('div', { class: 'papers' }, things.map((t) => this.paper(t))),
-      el('p', { class: 'sub' }, things.some((t) => t.kind === 'clue') ? 'Clues are copied into your notebook (N).' : 'It goes into your pocket.'), el('button', { class: 'btn primary', autofocus: true, onclick: () => closeModal() }, 'Take it')));
+      el('p', { class: 'sub' }, things.some((t) => t.kind === 'photo') ? 'The photograph is tucked into your notebook (N). Study it there.' : things.some((t) => t.style === 'logic') ? 'Copied into your notebook (N), where you can work it out.' : things.some((t) => t.kind === 'clue') ? 'Clues are copied into your notebook (N).' : things.some((t) => t.half) ? 'It goes into your pocket. It looks like half of something (I).' : 'It goes into your pocket (I).'), el('button', { class: 'btn primary', autofocus: true, onclick: () => closeModal() }, 'Take it')));
   }
-  notebook() {
+  notebook(tab = 'clues') {
     if (!this.started || this.won) return;
-    const groups = new Map();
-    for (const id of this.notes) { const t = this.thing(id); if (!groups.has(t.for)) groups.set(t.for, []); groups.get(t.for).push(t); }
-    const secs = [...groups].map(([pid, list]) => {
-      const owner = propById(this.level, pid), lock = owner.lock, solved = this.prog.opened.has(pid);
-      return el('section', { class: solved ? 'solved' : '' }, el('h3', { html: `${symbolSVG(lock.symbol, 26)} ${SYMBOLS[lock.symbol].name} clues` }, solved ? el('em', {}, ' lock opened ✓') : null),
-        ...list.map((t) => { const info = thingInfo(this.level, t); return el('div', { class: 'entry' }, el('b', {}, info.title + (t.at.slot === 'shown' ? ` (${propName(propById(this.level, t.at.prop))})` : '')), ...info.lines.map((l) => el('p', {}, l))); }));
-    });
-    const seen = this.level.props.filter((p) => p.lock && p.lock.symbol && this.lockState[p.id + '/seen'] && !this.prog.opened.has(p.id));
-    this.modal(el('div', { class: 'notebook' }, el('h2', {}, 'Notebook'),
-      secs.length ? secs : el('p', { class: 'sub' }, 'No clues yet. Search the furniture and examine anything unusual.'),
-      seen.length ? el('section', {}, el('h3', {}, 'Locks you have seen'), ...seen.map((p) => el('div', { class: 'entry', html: `${symbolSVG(p.lock.symbol, 20)} ${CATALOG[p.type].name}: ${{ key: 'needs a key', digits: p.lock.code.length + '-digit padlock', dial: 'safe dial', wheel: 'word wheel', merge: 'merge tray' }[p.lock.type]}` }))) : null,
-      el('button', { class: 'btn primary', autofocus: true, onclick: () => closeModal() }, 'Close')), { wide: true });
+    this.modal(notebookUI(this, tab), { wide: true });
   }
 
   // ---------------------------------------------------------------- interaction
   key(e) {
     if (this.won) return;
     if (modalOpen()) {
-      if (e.code === 'Escape' || ((e.code === 'KeyE' || e.code === 'Enter') && !e.target.closest('.lockui'))) { if ($('#modal').dataset.sticky && e.code === 'Escape') return; e.preventDefault(); if (e.code !== 'Escape') { const b = $('#panel .btn.primary'); if (b) return b.click(); } closeModal(); }
+      if ((e.code === 'KeyN' || e.code === 'KeyI' || e.code === 'Tab') && $('#panel .notebook')) { e.preventDefault(); return closeModal(); }
+      if (e.code === 'Escape' || ((e.code === 'KeyE' || e.code === 'Enter') && !e.target.closest('.lockui') && !$('#panel .notebook'))) { if ($('#modal').dataset.sticky && e.code === 'Escape') return; e.preventDefault(); if (e.code !== 'Escape') { const b = $('#panel .btn.primary'); if (b) return b.click(); } closeModal(); }
       return;
     }
     if (!this.started) return;
     if (e.code === 'KeyE' || e.code === 'Space') { e.preventDefault(); this.interact(); }
     else if (e.code === 'KeyN' || e.code === 'Tab') { e.preventDefault(); this.notebook(); }
+    else if (e.code === 'KeyI') this.notebook('items');
     else if (e.code === 'KeyH') this.hint();
   }
   click() {
@@ -135,14 +150,22 @@ export class Game {
     const { def, cat } = p;
     if (cat.container) return this.prog.opened.has(def.id) ? null : def.lock ? `Inspect the lock on the ${propName(def)}` : `Open the ${propName(def)}`;
     if (cat.hide) return this.prog.searched.has(def.id) ? null : cat.hide;
+    if (this.disturbed(def)) return `Search the ${propName(def)}`;
     if (thingsAt(this.level, def.id, 'shown').length) return `Examine the ${propName(def)}`;
     return `Look at the ${propName(def)}`;
   }
+  // furniture the photograph has given away, not yet searched
+  disturbed(def) { return this.photoDone && canSecret(CATALOG[def.type]) && photoDiff(this.level, def.id) && !this.prog.searched.has(def.id); }
   interact() {
     const p = this.target;
     if (!p) return;
     const { def, cat } = p, level = this.level;
     sfx('click');
+    if (this.disturbed(def)) {
+      this.prog.searched.add(def.id);
+      const got = thingsAt(level, def.id, 'secret');
+      return got.length ? this.collect(got, `You search the ${propName(def)}…`) : this.say(`The ${propName(def)} has been moved, but nothing is hidden here.`);
+    }
     if (cat.container) {
       if (this.prog.opened.has(def.id)) return this.say(`The ${propName(def)} is open and empty now.`);
       return def.lock ? this.tryLock(def) : this.open(def);
@@ -163,8 +186,9 @@ export class Game {
     this.say(cat.desc);
   }
   collect(things, heading) {
-    for (const t of things) { this.prog.known.add(t.id); (t.kind === 'clue' ? this.notes : this.carry).push(t.id); }
+    for (const t of things) { this.prog.known.add(t.id); (t.kind === 'clue' || t.kind === 'photo' ? this.notes : this.carry).push(t.id); }
     this.refreshHud();
+    if (things.some((t) => t.half) && this.items().some((i) => i.partner)) setTimeout(() => toast('Two of the pieces in your pocket look as if they belong together. Press I.', 5000), 400);
     this.found(things, heading);
   }
   tryLock(def) {
@@ -174,8 +198,9 @@ export class Game {
     if (lock.type === 'key' || lock.type === 'tool') {
       const r = canUnlock(level, def, this.prog.known);
       if (!r.ok) { sfx('wrong'); return this.say(lock.type === 'key' ? `Locked. The keyhole plate is stamped with a ${SYMBOLS[lock.symbol].name.toLowerCase()}: you need the key with the same mark.` : def.type === 'crate' ? 'Nailed shut. You need something to pry it open.' : 'Four screws hold the grille. You need something to undo them.'); }
-      const used = thingsFor(level, def.id).find((t) => t.kind === lock.type);
-      this.carry = this.carry.filter((id) => id !== used.id);
+      if (lock.split && !this.joined.has(def.id)) { sfx('wrong'); return this.say('You hold both broken halves, but they are no use apart. Join them in your inventory first (press I).'); }
+      const used = { ...thingsFor(level, def.id).find((t) => t.kind === lock.type), half: undefined };
+      this.carry = this.carry.filter((id) => { const t = this.thing(id); return !(t.for === def.id && t.kind === lock.type); });
       sfx('unlock');
       this.say(lock.type === 'key' ? `The ${SYMBOLS[lock.symbol].name.toLowerCase()} key turns with a clunk.` : `The ${thingInfo(level, used).name.toLowerCase()} does the job.`);
       return this.open(def);
@@ -203,6 +228,7 @@ export class Game {
     if (!this.started || this.won) return;
     const acts = possibleActions(this.level, this.prog);
     const a = acts.find((x) => x.type === 'open' && x.prop.lock) || acts.find((x) => x.type !== 'open') || acts[0];
+    const names = this.level.photo ? this.level.photo.diffs.map((d) => propName(propById(this.level, d.prop))) : [];
     let text = 'You have done everything there is to do here.', lvl = 1;
     if (a) {
       const k = a.type + a.prop.id;
@@ -210,9 +236,11 @@ export class Game {
       const name = propName(a.prop), lock = a.prop.lock, cat = CATALOG[a.prop.type];
       if (a.type === 'open' && lock) {
         const sym = lock.symbol ? SYMBOLS[lock.symbol].name.toLowerCase() : null;
-        const how = { key: 'Use the key with the matching mark.', tool: 'Use the tool you are carrying.', digits: { clock: 'Read the stopped clock as digits: hour, then minutes.', books: 'Count the books of each colour, in the order shown on the plaque.', radio: 'The radio frequency is the combination.', plain: 'The combination is written in your notebook.', torn: 'Put the two halves of the torn note together.' }[lock.style], dial: lock.style === 'torn' ? 'Put the two halves of the torn note together.' : 'The three turns are written in your notebook.', wheel: 'Go through the code words one at a time and cross out every word that breaks one of the clues. Only one survives.', merge: 'Place the carved pieces, then fuse identical solids until one remains. The tray has its own hint button.' }[lock.type];
+        const halves = lock.split && !this.joined.has(a.prop.id) ? 'Join the two broken halves in your inventory first (I). Then: ' : '';
+        const how = halves + { key: 'Use the key with the matching mark.', tool: 'Use the tool you are carrying.', digits: { logic: 'Work through the code-breaker lines in your notebook. Start with a line that scores "none": those digits are out.', clock: 'Read the stopped clock as digits: hour, then minutes.', books: 'Count the books of each colour, in the order shown on the plaque.', radio: 'The radio frequency is the combination.', plain: 'The combination is written in your notebook.', torn: 'Put the two halves of the torn note together.' }[lock.style], dial: lock.style === 'torn' ? 'Put the two halves of the torn note together.' : 'The three turns are written in your notebook.', wheel: 'Go through the code words one at a time and cross out every word that breaks one of the clues. Only one survives.', merge: 'Place the carved pieces, then fuse identical solids until one remains. The tray has its own hint button.' }[lock.type];
         text = [sym ? `You already hold everything needed for the lock marked with the ${sym}.` : 'Something you are carrying can open one of the obstacles in this room.', `It is the ${name}. ${how}`, `Open the ${name}: ${lockSummary(this.level, a.prop)}.`][lvl - 1];
       } else if (a.type === 'open') text = ['Not everything in this room is locked.', `Have you opened the ${name}?`, `Open the ${name}.`][lvl - 1];
+      else if (a.type === 'secret') text = this.photoDone ? ['The photograph showed you which furniture was disturbed. Have you searched all of it?', `Take a closer look at the ${name}.`, `Search the ${name}.`][lvl - 1] : ['Something in your notebook deserves a closer look.', 'Study the old photograph in your notebook and compare it with the room as it is now.', `In the photograph, the ${names.join(', the ')} are not where they are now. Click them, then search the ${name}.`][lvl - 1];
       else if (a.type === 'search') text = ['Something is still hidden in the room. Search the furniture.', `Take a closer look at the ${name}.`, `${cat.hide}.`][lvl - 1];
       else text = ['A clue is sitting in plain sight that you have not examined yet.', `Take a closer look at the ${name}.`, `Examine the ${name}.`][lvl - 1];
     }

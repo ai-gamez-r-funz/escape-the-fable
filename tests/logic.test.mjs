@@ -18,7 +18,8 @@ for (const theme of THEME_IDS) for (const difficulty of ['easy', 'medium', 'hard
   const res = checkLevel(level);
   ok(res.ok, `${theme}/${difficulty}/${seed}: ${res.errors.join(' | ')}`);
   stats.levels++; stats.steps += res.steps.length;
-  for (const p of level.props) if (p.lock) stats.locks[p.lock.type] = (stats.locks[p.lock.type] || 0) + 1;
+  for (const p of level.props) if (p.lock) { stats.locks[p.lock.type] = (stats.locks[p.lock.type] || 0) + 1; if (p.lock.split) stats.split = (stats.split || 0) + 1; if (p.lock.style) stats['style:' + p.lock.style] = (stats['style:' + p.lock.style] || 0) + 1; }
+  if (level.photo) stats.photo = (stats.photo || 0) + 1;
   if (seed <= 3) {
     ok(JSON.stringify(generate({ seed, theme, difficulty })) === JSON.stringify(level), `${theme}/${difficulty}/${seed}: not deterministic`);
     const round = parseLevel(JSON.stringify(cleanLevel(level)));

@@ -205,10 +205,11 @@ export function textTex({ w = 512, h = 384, bg = '#f3ecd8', fg = '#2b2118', font
     if (chalk) { for (let i = 0; i < 26; i++) { g.fillStyle = `rgba(255,255,255,${0.02 + rng.next() * 0.03})`; g.beginPath(); g.ellipse(rng.next() * w, rng.next() * h, 60 + rng.next() * 90, 14 + rng.next() * 22, rng.next() * 3, 0, 7); g.fill(); } }
     g.fillStyle = fg; g.textBaseline = 'top';
     if (lines && lines.length) {
-      g.font = `bold ${size}px ${font}`;
       const pad = symbol ? 96 : 30;
-      const wrapped = wrap(g, lines, w - pad - 30);
-      const lh = size * 1.3, y0 = Math.max(20, (h - wrapped.length * lh) / 2);
+      let wrapped;
+      // shrink the lettering until everything fits on the surface
+      for (;; size -= 3) { g.font = `bold ${size}px ${font}`; wrapped = wrap(g, lines, w - pad - 30); if (wrapped.length * size * 1.3 <= h - 24 || size <= 15) break; }
+      const lh = size * 1.3, y0 = Math.max(12, (h - wrapped.length * lh) / 2);
       wrapped.forEach((ln, i) => g.fillText(ln, pad, y0 + i * lh));
       if (symbol) sticker(g, symbol, 50, h / 2, 34);
     } else {
