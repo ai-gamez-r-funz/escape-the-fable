@@ -17,6 +17,7 @@ export class World {
     this.props = new Map();
     this.tweens = [];
     this.colliders = [];
+    this.bobbers = [];
     this.hovered = null;
     placeTops(level);
     this.buildRoom();
@@ -27,7 +28,7 @@ export class World {
     const { w, d } = this.level.room, h = 3, pal = this.theme.pal, s = this.scene;
     const rng = new RNG(hashStr('room' + (this.level.seed || this.level.name)));
     const mood = this.theme.mood;
-    this.spinners = [];
+    this.spinners = []; this.bobbers = this.bobbers || [];
     s.background = new THREE.Color(mood.fog ? mood.fog[0] : 0x0d0c0b);
     if (mood.fog) s.fog = new THREE.FogExp2(mood.fog[0], mood.fog[1]);
     const std = (o) => new THREE.MeshStandardMaterial({ roughness: 0.9, ...o });
@@ -80,7 +81,8 @@ export class World {
     const cat = CATALOG[def.type], level = this.level;
     const shown = thingsAt(level, def.id, 'shown')[0] || null;
     const lock = shown ? propById(level, shown.for).lock : null;
-    const ctx = { level, theme: this.theme, rng: new RNG(hashStr(def.id + def.type + (level.seed || 0))), shown, lock };
+    const said = thingsAt(level, def.id, 'spoken')[0];
+    const ctx = { level, theme: this.theme, rng: new RNG(hashStr(def.id + def.type + (level.seed || 0))), shown, lock, spoken: said ? propById(level, said.for).lock.symbol : null };
     const g = buildProp(def, ctx);
     let y = cat.y || 0;
     if (cat.place === 'top') { const host = propById(level, def.on); y = host ? CATALOG[host.type].h : 0; }
@@ -108,6 +110,7 @@ export class World {
       g.add(l);
     }
     if (cat.place === 'floor') this.colliders.push(rectOf(def));
+    if (g.userData.idle) this.bobbers.push({ o: g.userData.idle, t: Math.random() * 6 });
     this.props.set(def.id, { def, cat, group: g, state: 0 });
   }
 
@@ -134,6 +137,7 @@ export class World {
     }
     this.tweens = this.tweens.filter((tw) => tw.t < 1);
     for (const sp of this.spinners) sp.o.rotation.y += dt * sp.speed;
+    for (const b of this.bobbers) { b.t += dt; b.o.rotation.z = Math.sin(b.t * 1.3) * 0.12; b.o.rotation.y = Math.sin(b.t * 0.45) * 0.6; b.o.position.y = 1.21 + Math.max(0, Math.sin(b.t * 2.6)) * 0.012; }
   }
 
   // which prop is under the given ray (within reach)?

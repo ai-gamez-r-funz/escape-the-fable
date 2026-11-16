@@ -176,7 +176,7 @@ export function setSplit(level, prop, split) {
 
 // ---- the photograph: a spot-the-difference puzzle. The photo shows the room as it used to be;
 // three pieces of furniture have since been disturbed, and a disturbed decor piece can hide something.
-export const canSecret = (cat) => cat.place === 'floor' && !cat.container && !cat.hide && !cat.inscribe && !cat.feature;
+export const canSecret = (cat) => cat.place === 'floor' && !cat.parrot && !cat.container && !cat.hide && !cat.inscribe && !cat.feature;
 const MOVABLE = ['chair', 'stool', 'mic_stand', 'floor_globe', 'armchair', 'waste_bin', 'plant', 'floor_lamp', 'coat_rack'];
 function inShot(level, cam, p) {
   const c = CATALOG[p.type], ty = c.h * 0.6;
@@ -246,6 +246,7 @@ export function slotFor(thing, prop, level) {
   if (thing.kind === 'photo') return cat.container && !cat.container.exit ? 'holds' : cat.hide ? 'hidden' : null;
   if (level && canSecret(cat) && photoDiff(level, prop.id)) return thing.kind === 'clue' && ['clock', 'books', 'radio'].includes(thing.style) ? null : 'secret';
   if (thing.kind === 'clue' && ['clock', 'books', 'radio'].includes(thing.style)) return cat.feature === thing.style ? 'shown' : null;
+  if (cat.parrot) return thing.kind === 'clue' && ['plain', 'constraint'].includes(thing.style) ? 'spoken' : null; // the parrot can be taught a short clue
   if (cat.container && !cat.container.exit) return 'holds';
   if (cat.hide) return 'hidden';
   if (cat.inscribe && thing.kind === 'clue' && ['plain', 'logic', 'codebook', 'constraint'].includes(thing.style)) return 'shown';
@@ -256,7 +257,7 @@ export function slotFor(thing, prop, level) {
 export const AIDS = { matches: 'Matchbook', lens: 'Magnifying glass' };
 export function needFor(thing) {
   if (thing.kind !== 'clue' || !thing.at || ['clock', 'books', 'radio'].includes(thing.style)) return null;
-  return thing.at.slot === 'shown' ? 'lens' : 'matches';
+  return thing.at.slot === 'shown' ? 'lens' : thing.at.slot === 'spoken' ? null : 'matches';
 }
 export function ensureAids(level) {
   const made = [];
@@ -269,7 +270,7 @@ export function ensureAids(level) {
 }
 export const readable = (level, t, known) => !t.needs || level.things.some((a) => a.kind === 'aid' && a.aid === t.needs && known.has(a.id));
 
-export const SLOT_CAP = { holds: 4, hidden: 2, shown: 1, secret: 1 };
+export const SLOT_CAP = { holds: 4, hidden: 2, shown: 1, secret: 1, spoken: 1 };
 
 // Table-top props follow their host.
 export function placeTops(level) {

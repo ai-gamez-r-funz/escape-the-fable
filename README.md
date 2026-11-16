@@ -45,11 +45,14 @@ Clues rarely hand over a finished answer. The notebook is where they get worked 
 - **Torn notes** are pieced together once both halves are found.
 - **Code words** can be crossed out one by one as the word clues rule them out.
 - **Reading aids.** A hidden blank sheet is a note in invisible ink: hold a match from the matchbook under it (inventory) and the message appears. Tiny writing on a surface needs the magnifying glass.
+- **The parrot.** Some rooms keep a caged parrot. It chats, and if its cage tag carries a lock's symbol it has been taught a clue: ring its bell song back to it, three rounds of growing length, and it squawks the secret into your notebook.
 - **Inventory tab.** Some keys and tools are broken in two. When you hold both halves they glow, and one click joins them.
 
 ### Five settings, five moods
 
 Each setting has its own light, colour grade, ceiling fixture and room tone: rain and blind-striped street light in the detective's office with a slow ceiling fan; a ticking clock and amber dusk in the study; a red ON AIR glow and static at the radio station; cold strip lights and a mains hum in the lab; daylight through a brass porthole, engine throb and a gentle roll aboard the liner.
+
+Rooms are dressed with modernist prints, sculpted wall reliefs and geometric rugs (rectangular and round) generated in each setting's palette.
 
 ### Locks and puzzles
 
@@ -112,7 +115,7 @@ Each setting has its own light, colour grade, ceiling fixture and room tone: rai
 }
 ```
 
-Slots: `holds` (inside a container), `hidden` (in a hiding spot), `shown` (written on, or displayed by, a prop), `secret` (in furniture the photograph gives away).
+Slots: `holds` (inside a container), `hidden` (in a hiding spot), `shown` (written on, or displayed by, a prop), `secret` (in furniture the photograph gives away), `spoken` (taught to the parrot).
 Lock types: `key`, `tool`, `digits`, `dial`, `wheel`, `merge`. Clue styles: `logic` (code-breaker), `plain`, `tornA`/`tornB`, `clock`, `books`, `radio`, `codebook`, `constraint`.
 A clue may carry `"needs": "matches" | "lens"`, in which case a matching `{ "kind": "aid", "aid": ... }` item must be findable.
 Other thing kinds: `key` / `tool` (with `"half": "a" | "b"` when broken), `shape`, and `photo`, which pairs with a top-level `"photo": { "cam": {...}, "diffs": [...] }` describing how the room looked before.

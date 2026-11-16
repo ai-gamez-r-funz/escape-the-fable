@@ -13,6 +13,7 @@ import { el, $, openModal, closeModal, modalOpen, toast, thingIcon, symbolSVG, s
 const BLANK = { name: 'Blank sheet of paper', title: 'Blank sheet of paper', lines: ['A sheet of paper with nothing on it. An odd thing to hide. It smells faintly of lemon.'] };
 import { digitsUI, dialUI, wheelUI } from './lockui.js';
 import { mergeUI } from './mergeui.js';
+import { parrotUI } from './parrotui.js';
 
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -166,6 +167,7 @@ export class Game {
   }
   promptFor(p) {
     const { def, cat } = p;
+    if (cat.parrot) return 'Talk to the parrot';
     if (cat.container) return this.prog.opened.has(def.id) ? null : def.lock ? `Inspect the lock on the ${propName(def)}` : `Open the ${propName(def)}`;
     if (cat.hide) return this.prog.searched.has(def.id) ? null : cat.hide;
     if (this.disturbed(def)) return `Search the ${propName(def)}`;
@@ -183,6 +185,11 @@ export class Game {
       this.prog.searched.add(def.id);
       const got = thingsAt(level, def.id, 'secret');
       return got.length ? this.collect(got, `You search the ${propName(def)}…`) : this.say(`The ${propName(def)} has been moved, but nothing is hidden here.`);
+    }
+    if (cat.parrot) {
+      const t = thingsAt(level, def.id, 'spoken')[0], st = (this.lockState[def.id] = this.lockState[def.id] || {});
+      const secret = t ? { symbol: propById(level, t.for).lock.symbol, line: thingInfo(level, t).lines[0] } : null;
+      return this.modal(parrotUI(this.theme, def.id, st, secret, () => { if (!this.prog.known.has(t.id)) { this.prog.known.add(t.id); this.notes.push(t.id); this.refreshHud(); } }));
     }
     if (cat.container) {
       if (this.prog.opened.has(def.id)) return this.say(`The ${propName(def)} is open and empty now.`);
@@ -264,6 +271,7 @@ export class Game {
         text = [sym ? `You already hold everything needed for the lock marked with the ${sym}.` : 'Something you are carrying can open one of the obstacles in this room.', `It is the ${name}. ${how}`, `Open the ${name}: ${lockSummary(this.level, a.prop)}.`][lvl - 1];
       } else if (a.type === 'open') text = ['Not everything in this room is locked.', `Have you opened the ${name}?`, `Open the ${name}.`][lvl - 1];
       else if (a.type === 'secret') text = this.photoDone ? ['The photograph showed you which furniture was disturbed. Have you searched all of it?', `Take a closer look at the ${name}.`, `Search the ${name}.`][lvl - 1] : ['Something in your notebook deserves a closer look.', 'Study the old photograph in your notebook and compare it with the room as it is now.', `In the photograph, the ${names.join(', the ')} are not where they are now. Click them, then search the ${name}.`][lvl - 1];
+      else if (a.type === 'talk') text = ['Not every clue in this room is written down.', `The ${this.theme.parrot.name ? 'parrot' : name} knows something. Ask for its secret and ring its bell song back to it.`, 'Talk to the parrot, press Listen, then ring the same bells in the same order, three rounds running.'][lvl - 1];
       else if (a.type === 'search') text = ['Something is still hidden in the room. Search the furniture.', `Take a closer look at the ${name}.`, `${cat.hide}.`][lvl - 1];
       else text = ['A clue is sitting in plain sight that you have not examined yet.', `Take a closer look at the ${name}.`, `Examine the ${name}.`][lvl - 1];
     }
@@ -303,7 +311,9 @@ export class Game {
     }
     const label = target && this.promptFor(target);
     this.target = target;
-    this.world.highlight(target && label ? target.def.id : null);
+    // only things worth interacting with glow; plain decoration just gets its label
+    const c = target && target.cat, live = c && (c.container || c.hide || c.parrot || this.disturbed(target.def) || thingsAt(this.level, target.def.id, 'shown').length);
+    this.world.highlight(target && label && live ? target.def.id : null);
     this.ui.prompt.textContent = label || '';
     this.ui.prompt.hidden = !label;
     this.ui.timer.textContent = fmtTime(this.time);

@@ -33,6 +33,11 @@ export function thingInfo(level, t) {
     const tier = lock.board.pieces[t.piece].t;
     return { name: TIERS[tier], title: `Carved ${TIERS[tier].toLowerCase()}`, symbol, tier, lines: [`A carved wooden ${TIERS[tier].toLowerCase()}. It belongs in a matching hollow of the ${symName(lock).toLowerCase()} tray.`] };
   }
+  if (t.at && t.at.slot === 'spoken') {
+    const W = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'], cap = (x) => x[0].toUpperCase() + x.slice(1);
+    const said = t.style === 'constraint' ? textC(lock.constraints[t.idx]).replace(/\.$/, '!') : lock.type === 'dial' ? `Right to ${lock.combo[0]}! Left to ${lock.combo[1]}! Right to ${lock.combo[2]}!` : [...lock.code].map((d) => cap(W[d]) + '!').join(' ');
+    return { name: 'What the parrot said', title: 'What the parrot said', symbol, lines: [`"Awk! ${said} Awk!"`] };
+  }
   const shown = t.at && t.at.slot === 'shown';
   const info = { note: !shown, symbol, lines: [] };
   const code = lock.code || '';
@@ -126,6 +131,7 @@ export function possibleActions(level, prog) {
     const cat = CATALOG[p.type];
     const shown = thingsAt(level, p.id, 'shown').filter((t) => !prog.known.has(t.id) && readable(level, t, prog.known));
     if (shown.length) out.push({ type: 'observe', prop: p, gains: shown });
+    if (cat.parrot) { const g = thingsAt(level, p.id, 'spoken').filter((t) => !prog.known.has(t.id)); if (g.length) out.push({ type: 'talk', prop: p, gains: g }); }
     if (cat.hide && !prog.searched.has(p.id)) { const g = thingsAt(level, p.id, 'hidden'); if (g.length) out.push({ type: 'search', prop: p, gains: g }); }
     // disturbed furniture can only be searched once the photograph has given it away
     if (photoDiff(level, p.id) && !prog.searched.has(p.id) && level.things.some((t) => t.kind === 'photo' && prog.known.has(t.id))) { const g = thingsAt(level, p.id, 'secret'); if (g.length) out.push({ type: 'secret', prop: p, gains: g }); }
@@ -134,7 +140,7 @@ export function possibleActions(level, prog) {
       if (g.length || cat.container.exit) out.push({ type: 'open', prop: p, gains: g, exit: !!cat.container.exit });
     }
   }
-  const rank = (a) => (a.type === 'observe' ? 0 : a.type === 'search' ? 1 : a.exit ? 3 : 2);
+  const rank = (a) => (a.type === 'observe' || a.type === 'talk' ? 0 : a.type === 'search' ? 1 : a.exit ? 3 : 2);
   return out.sort((a, b) => rank(a) - rank(b));
 }
 export function applyAction(prog, a) {
@@ -147,6 +153,7 @@ function stepText(level, a) {
   const names = a.gains.map((t) => thingInfo(level, t).name.toLowerCase() + (t.needs === 'matches' ? ' (it looks blank: warm it with the matchbook to read it)' : '')).join(', ');
   const cat = CATALOG[a.prop.type];
   if (a.type === 'observe') return `Examine the ${propName(a.prop)}${a.gains[0].needs ? ' through the magnifying glass' : ''}: ${thingInfo(level, a.gains[0]).lines.join(' ')}`;
+  if (a.type === 'talk') return `Ring the parrot's bell song back to it → it squawks ${thingInfo(level, a.gains[0]).lines[0]}`;
   if (a.type === 'search') return `${cat.hide} → find ${names}.`;
   if (a.type === 'secret') return `Compare the photograph with the room: the ${propName(a.prop)} has been disturbed. Search it → find ${names}.`;
   const how = a.prop.lock ? `Open the ${propName(a.prop)} (${lockSummary(level, a.prop)})` : `Open the ${propName(a.prop)}`;
@@ -254,7 +261,7 @@ export function checkLayout(level) {
   } else if (level.props.some((p) => p.type === 'door')) errors.push('The space in front of the exit door is blocked.');
   for (const p of level.props) {
     const c = CATALOG[p.type];
-    if (!(c.container || c.hide || c.inscribe || c.feature)) continue;
+    if (!(c.container || c.hide || c.inscribe || c.feature || c.parrot)) continue;
     const r = rectOf(p);
     let ok = false;
     for (let iz = 0; iz < nz && !ok; iz++) for (let ix = 0; ix < nx && !ok; ix++) {

@@ -94,6 +94,7 @@ const SFX = {
   found: () => { tone(660, 0, 0.12, 'triangle'); tone(880, 0.1, 0.2, 'triangle'); },
   merge: () => { tone(440, 0, 0.1, 'triangle'); tone(587, 0.07, 0.1, 'triangle'); tone(784, 0.14, 0.2, 'triangle'); },
   slide: () => tone(220, 0, 0.08, 'sine', 0.08),
+  squawk: () => { tone(900, 0, 0.07, 'sawtooth', 0.06); tone(1300, 0.06, 0.09, 'sawtooth', 0.06); tone(700, 0.14, 0.12, 'sawtooth', 0.05); },
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.14, 0.4, 'triangle', 0.13)),
 };
 // Quiet looping room tone per setting, synthesised from filtered noise and slow oscillators.
@@ -131,6 +132,12 @@ export function ambience(kind) {
     }
     ambient = { gain: out, nodes };
   } catch (e) { /* no audio */ }
+}
+
+// a single pitched note (the parrot's bells)
+export function note(freq, dur = 0.35) {
+  if (muted) return;
+  try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); tone(freq, 0, dur, 'triangle', 0.14); tone(freq * 2, 0, dur * 0.6, 'sine', 0.05); } catch (e) { /* no audio */ }
 }
 
 export function sfx(name) {

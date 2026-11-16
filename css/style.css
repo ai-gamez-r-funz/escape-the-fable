@@ -185,6 +185,23 @@ select, input[type=text], input[type=number] { font: inherit; color: var(--ink);
 .dpad .btn { padding: .35em .8em; }
 .merge .col { flex-direction: row; }
 
+/* ---------- parrot */
+.parrotrow { display: flex; align-items: center; gap: 1em; justify-content: center; margin: .2em 0 .6em; }
+.portrait { flex: none; background: radial-gradient(#fffdf4, #e9dfc4); border: 3px solid var(--ink); border-radius: 14px; padding: 6px 10px 0; line-height: 0; }
+.portrait .bird { transform-origin: 60px 128px; animation: bob 2.4s ease-in-out infinite; }
+@keyframes bob { 50% { transform: rotate(-5deg) translateY(-2px); } }
+.bubble { position: relative; flex: 1; max-width: 330px; background: #fffdf4; border: 3px solid var(--ink); border-radius: 16px; padding: .8em 1em; font: 700 1.1rem var(--serif); text-align: left; min-height: 3.6em; display: flex; align-items: center; }
+.bubble::before { content: ""; position: absolute; left: -14px; top: 50%; margin-top: -9px; border: 9px solid transparent; border-right-color: var(--ink); border-left: 0; }
+.bubble.pop { animation: pop .2s ease-out; }
+.bells { display: flex; gap: .7em; justify-content: center; margin: .9em 0 .5em; }
+.bells.off { opacity: .45; }
+.bell { width: 64px; height: 76px; border: 0; background: none; cursor: pointer; font: 700 .8rem var(--sans); color: var(--ink2); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.bell span { width: 56px; height: 56px; border-radius: 50% 50% 46% 46% / 62% 62% 38% 38%; background: var(--c); border: 3px solid var(--ink); box-shadow: inset -7px -5px 0 rgba(0, 0, 0, .18), inset 6px 5px 0 rgba(255, 255, 255, .25); transition: transform .08s, filter .08s; }
+.bell.lit span, .bell:active span { transform: rotate(-12deg) scale(1.14); filter: brightness(1.5) drop-shadow(0 0 10px var(--c)); }
+.songdots { display: flex; gap: 6px; justify-content: center; min-height: 14px; }
+.songdots i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); }
+.songdots i.on { background: var(--mustard); }
+
 /* ---------- editor */
 #editor { position: fixed; inset: 0; background: #e6dcc0; display: grid; grid-template: auto 1fr / 210px 1fr 370px; }
 .ed-top { grid-column: 1 / -1; display: flex; gap: .5em; align-items: center; flex-wrap: wrap; padding: .5em .8em; background: var(--ink); color: var(--cream); }

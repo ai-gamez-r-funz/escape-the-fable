@@ -143,6 +143,11 @@ function build(rng, themeId, difficulty) {
   }
 
   // ---- 2. everything still pending goes to a free spot (hiding places, unlocked furniture)
+  // ...except that now and then the room's parrot has been taught one of the clues
+  if (T.props.includes('parrot') && rng.chance({ easy: 0.5, medium: 0.6, hard: 0.7 }[difficulty])) {
+    const i = pending.findIndex((t) => t.kind === 'clue' && ['plain', 'constraint'].includes(t.style));
+    if (i >= 0) pending.splice(i, 1)[0].at = { prop: addProp(level, 'parrot').id, slot: 'spoken' };
+  }
   for (const thing of rng.shuffle(pending)) {
     let spot = null;
     const hideTypes = avail((c) => c.hide, 1).concat(count('painting') === 1 && T.props.includes('painting') ? ['painting'] : []);
@@ -159,7 +164,8 @@ function build(rng, themeId, difficulty) {
 
   // ---- 3. dress the room: theme signature pieces, then a little decor
   for (const t of T.must) if (!count(t)) addProp(level, t);
-  const decor = rng.shuffle(T.props.filter((t) => { const c = CATALOG[t]; return !count(t) && !c.container && c.place !== 'top'; }));
+  addProp(level, rng.chance(0.65) ? 'wall_art' : 'wall_relief');
+  const decor = rng.shuffle(T.props.filter((t) => { const c = CATALOG[t]; return !count(t) && !c.container && c.place !== 'top' && !(t === 'parrot' && rng.chance(0.6)); }));
   const floorCount = () => level.props.filter((p) => CATALOG[p.type].place !== 'top').length;
   const target = { easy: 12, medium: 15, hard: 18 }[difficulty];
   while (floorCount() < target && decor.length) addProp(level, decor.pop());
@@ -211,7 +217,7 @@ export function layoutLevel(level, rng, keepSize = false) {
 function tryLayout(level, rng) {
   const { w, d } = level.room;
   const bodies = [], zones = [];
-  const needsAccess = (c) => c.container || c.hide || c.inscribe || c.feature;
+  const needsAccess = (c) => c.container || c.hide || c.inscribe || c.feature || c.parrot;
   const zoneOf = (p, depth) => {
     const r = rectOf(p), f = FRONT[p.rot];
     return { x0: f[0] < 0 ? r.x0 - depth : f[0] > 0 ? r.x1 : r.x0, x1: f[0] > 0 ? r.x1 + depth : f[0] < 0 ? r.x0 : r.x1, z0: f[1] < 0 ? r.z0 - depth : f[1] > 0 ? r.z1 : r.z0, z1: f[1] > 0 ? r.z1 + depth : f[1] < 0 ? r.z0 : r.z1 };
@@ -276,8 +282,10 @@ function tryLayout(level, rng) {
     }
     if (!done) return false;
   }
-  for (const rug of level.props.filter((p) => p.type === 'rug')) {
-    const c = CATALOG.rug, anchor = level.props.find((p) => p.type === 'desk' || p.type === 'armchair' || p.type === 'sofa');
+  const rugs = level.props.filter((p) => CATALOG[p.type].place === 'rug');
+  for (const rug of rugs) {
+    // the first rug anchors the main furniture; a second one finds its own patch of floor
+    const c = CATALOG[rug.type], first = rug === rugs[0], anchor = first ? level.props.find((p) => p.type === 'desk' || p.type === 'armchair' || p.type === 'sofa') : { x: (rugs[0].x > 0 ? -1 : 1) * w * 0.5, z: (rugs[0].z > 0 ? -1 : 1) * d * 0.5 };
     rug.rot = w >= d ? 0 : 1;
     const hw = (rug.rot ? c.d : c.w) / 2 + 0.15, hd = (rug.rot ? c.w : c.d) / 2 + 0.15;
     rug.x = Math.max(-w / 2 + hw, Math.min(w / 2 - hw, (anchor ? anchor.x * 0.5 : 0) + rng.range(-0.4, 0.4)));

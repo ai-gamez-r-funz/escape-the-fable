@@ -12,9 +12,9 @@ import { TIERS } from './mergepuzzle.js';
 import { el, $, toast, symbolSVG } from './ui.js';
 
 const ROLE_COLOR = { container: '#d9a21b', hide: '#2f8f9c', clue: '#8a63b5', exit: '#c8473c', decor: '#9c9280' };
-const roleOf = (c) => (c.container ? (c.container.exit ? 'exit' : 'container') : c.hide ? 'hide' : c.inscribe || c.feature ? 'clue' : 'decor');
+const roleOf = (c) => (c.container ? (c.container.exit ? 'exit' : 'container') : c.hide ? 'hide' : c.inscribe || c.feature || c.parrot ? 'clue' : 'decor');
 const STYLE_NAMES = { logic: 'Code-breaker lines (deduce it)', plain: 'Written out in full', torn: 'Note torn in two halves', clock: 'Stopped clock', books: 'Book count on a shelf', radio: 'Radio dial frequency' };
-const SLOT_WORD = { holds: 'Inside the', hidden: 'Hidden at the', shown: 'Written on the', secret: 'Secretly in the disturbed' };
+const SLOT_WORD = { spoken: 'Taught to the', holds: 'Inside the', hidden: 'Hidden at the', shown: 'Written on the', secret: 'Secretly in the disturbed' };
 const STORE = 'escape-the-fable/workshop';
 
 export class Editor {
@@ -416,7 +416,7 @@ export class Editor {
       const here = thingsAt(L, p.id);
       out.push(el('div', { class: 'card' },
         el('h3', {}, el('span', { class: 'grow' }, c.name), el('button', { class: 'btn small', onclick: () => this.rotate() }, 'Rotate'), el('button', { class: 'btn small', onclick: () => this.remove() }, 'Delete')),
-        el('p', { class: 'tiny' }, c.container ? (c.container.exit ? 'The way out. Opening it wins the game.' : 'A container: it can be locked and things can be placed inside.') : c.hide ? `A hiding spot ("${c.hide}").` : c.inscribe ? 'A writing surface: it can display a written clue.' : c.feature ? `Can display a code as a ${c.feature === 'books' ? 'count of coloured books' : c.feature === 'clock' ? 'stopped time' : 'radio frequency'}.` : c.host ? 'Furniture. Table-top pieces can sit on it.' : 'Decoration.'),
+        el('p', { class: 'tiny' }, c.container ? (c.container.exit ? 'The way out. Opening it wins the game.' : 'A container: it can be locked and things can be placed inside.') : c.hide ? `A hiding spot ("${c.hide}").` : c.inscribe ? 'A writing surface: it can display a written clue.' : c.feature ? `Can display a code as a ${c.feature === 'books' ? 'count of coloured books' : c.feature === 'clock' ? 'stopped time' : 'radio frequency'}.` : c.parrot ? 'A talking parrot. It can be taught one short clue, which it gives up after a bell-song memory game. Otherwise it just chats.' : c.host ? 'Furniture. Table-top pieces can sit on it.' : 'Decoration.'),
         c.container ? this.lockCard(p) : null,
         photoDiff(L, p.id) ? el('p', { class: 'tiny' }, '📷 Disturbed since the photograph was taken' + (L.photo.diffs.find((x) => x.prop === p.id).gone ? ' (it is missing from the photo).' : ' (it stands elsewhere in the photo).')) : null,
         here.length ? [el('h4', {}, 'Placed here'), ...here.map((t) => { const owner = propById(L, t.for); return el('div', { class: 'thing' }, el('b', { html: (owner && owner.lock.symbol ? symbolSVG(owner.lock.symbol, 16) + ' ' : '') + thingInfo(L, t).name }), el('span', { class: 'tiny' }, owner ? `for the ${propName(owner)} · ` : ''), el('button', { class: 'linkish', onclick: () => this.edit(() => { t.at = null; }) }, 'take out')); })] : null));

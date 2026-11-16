@@ -181,6 +181,52 @@ B.rug = (g, K, c, U, ctx) => {
   U.search = [{ obj: r, pos: [0.45, 0.0, 0.2], rot: [0, 0.3, 0] }];
 };
 
+B.round_rug = (g, K, c, U, ctx) => {
+  const r = grp(g);
+  const m = cyl(r, K.T(TX.rugTex(K.pal, ctx.rng, true), { roughness: 1 }), c.w / 2, c.w / 2, 0.016, 0, 0, 0, 40);
+  m.castShadow = false;
+  U.search = [{ obj: r, pos: [0.4, 0.0, 0.25], rot: [0, 0.5, 0] }];
+};
+
+B.wall_art = (g, K, c, U, ctx) => {
+  box(g, K.black, 0.72, 1.0, 0.035, 0, 0, -0.008);
+  plane(g, K.cream, 0.66, 0.94, 0, 0.5, 0.011);
+  plane(g, K.T(TX.artTex(K.pal, ctx.rng)), 0.56, 0.78, 0, 0.52, 0.013);
+};
+B.wall_relief = (g, K, c, U, ctx) => {
+  const cols = [0xd9792b, 0x2f8f9c, 0xd9a21b, 0xc8473c, 0xe9e2cf, K.pal.accent], R = ctx.rng, pick = () => K.M(R.pick(cols), 0.6);
+  box(g, K.M(0x2b2622, 0.8), 1.15, 0.8, 0.03, 0, 0, -0.03);
+  // overlapping discs, a half-moon, bars and a wedge at different depths
+  for (let i = 0; i < 3; i++) facing(cyl(g, pick(), 0.11 + R.next() * 0.1, 0.11 + R.next() * 0.1, 0.03 + i * 0.012, -0.35 + i * 0.3 + R.range(-0.06, 0.06), 0.3 + R.range(-0.12, 0.2), 0.0 + i * 0.006, 28));
+  const half = mesh(g, new THREE.CylinderGeometry(0.2, 0.2, 0.035, 24, 1, false, 0, Math.PI), pick(), R.range(-0.3, 0.3), R.range(0.25, 0.55), 0.015); half.rotation.set(Math.PI / 2, R.range(0, 6), 0);
+  for (let i = 0; i < 3; i++) box(g, pick(), 0.5 + R.next() * 0.4, 0.035, 0.03, R.range(-0.2, 0.2), 0.1 + i * 0.26 + R.range(-0.04, 0.04), 0.02).rotation.z = R.range(-0.08, 0.08);
+  const wedge = mesh(g, new THREE.CylinderGeometry(0.16, 0.16, 0.03, 3), pick(), R.range(0.25, 0.42), R.range(0.2, 0.6), 0.03); wedge.rotation.set(Math.PI / 2, R.range(0, 2), 0);
+  sph(g, K.brass, 0.045, R.range(-0.45, -0.25), R.range(0.55, 0.68), 0.04, 14);
+};
+
+// A parrot in a domed cage on a stand. The bird bobs gently (U.idle) and the cage carries bells.
+B.parrot = (g, K, c, U, ctx) => {
+  cyl(g, K.dark, 0.2, 0.24, 0.04); cyl(g, K.dark, 0.022, 0.03, 0.95, 0, 0.04, 0, 10); cyl(g, K.brass, 0.27, 0.27, 0.035, 0, 0.99, 0, 24);
+  const bar = K.M(0xb8923a, 0.4, 0.7);
+  for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; cyl(g, bar, 0.006, 0.006, 0.5, Math.cos(a) * 0.25, 1.02, Math.sin(a) * 0.25, 5); }
+  for (const y of [1.25, 1.52]) mesh(g, new THREE.TorusGeometry(0.25, 0.007, 5, 28), bar, 0, y, 0).rotation.x = Math.PI / 2;
+  const dome = mesh(g, new THREE.SphereGeometry(0.25, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2), K.M(0xb8923a, 0.4, 0.7, { wireframe: true }), 0, 1.52, 0); dome.castShadow = false;
+  sph(g, K.brass, 0.03, 0, 1.79, 0, 10);
+  cyl(g, K.wood, 0.012, 0.012, 0.44, 0, 0, 0, 6).rotation.z = Math.PI / 2; g.children[g.children.length - 1].position.set(0, 1.2, 0);
+  [0xc8473c, 0x2f8f9c, 0xd9a21b, 0x4d8a3c].forEach((col, i) => { const b = cyl(g, K.M(col, 0.35, 0.5), 0.012, 0.03, 0.04, -0.15 + i * 0.1, 1.44, 0.2, 10); cyl(g, bar, 0.002, 0.002, 0.06, b.position.x, 1.48, 0.2, 4); });
+  const bird = grp(g, 0, 1.21, 0);
+  const red = K.M(0xd23a2a, 0.7), blue = K.M(0x2b62b8, 0.7), yel = K.M(0xe2b93b, 0.7);
+  const body = sph(bird, red, 0.075, 0, 0.1, 0, 14); body.scale.set(0.85, 1.25, 0.9);
+  sph(bird, red, 0.055, 0, 0.215, 0.02, 14);
+  const beak = cyl(bird, K.M(0x2b2622, 0.4), 0.0, 0.022, 0.05, 0, 0.19, 0.075, 8); beak.rotation.x = 2.1;
+  sph(bird, K.cream, 0.022, 0, 0.215, 0.05, 8).scale.set(1.7, 1, 0.6);
+  for (const s of [-1, 1]) { sph(bird, K.black, 0.008, s * 0.03, 0.225, 0.058, 6); const wing = sph(bird, s > 0 ? blue : yel, 0.06, s * 0.062, 0.1, -0.005, 10); wing.scale.set(0.3, 1.1, 0.75); }
+  const tail = box(bird, blue, 0.035, 0.2, 0.012, 0, -0.13, -0.05); tail.rotation.x = -0.3;
+  for (const s of [-1, 1]) cyl(bird, K.M(0x555555), 0.006, 0.006, 0.03, s * 0.025, -0.01, 0, 5);
+  U.idle = bird;
+  U.plate = { parent: g, pos: [0, 0.99, 0.275], s: 0.9, always: true };
+};
+
 B.painting = (g, K, c, U, ctx) => {
   plane(g, K.void, 0.5, 0.4, 0, 0.375, -0.028);
   const p = grp(g, -0.475, 0, 0);
@@ -425,6 +471,10 @@ function lockMesh(K, lock) {
 export function buildProp(def, ctx) {
   const cat = CATALOG[def.type], g = new THREE.Group(), K = makeKit(ctx.theme.pal), U = {};
   B[def.type](g, K, cat, U, ctx);
+  if (U.plate && U.plate.always && ctx.spoken) {
+    // the parrot's cage tag carries the symbol of the lock its secret belongs to
+    const tag = mesh(g, new THREE.CircleGeometry(0.05, 20), new THREE.MeshStandardMaterial({ map: TX.symbolTex(ctx.spoken), roughness: 0.6 }), ...U.plate.pos); tag.castShadow = false; K.mats.push(tag.material);
+  }
   if (def.lock && U.plate && def.lock.symbol) {
     const lm = lockMesh(K, def.lock);
     lm.position.set(...U.plate.pos);
