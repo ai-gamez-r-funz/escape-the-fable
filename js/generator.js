@@ -5,7 +5,7 @@
 import { RNG, hashStr, randomSeed } from './rng.js';
 import { CATALOG, rectOf, FRONT, overlap } from './catalog.js';
 import { THEMES, THEME_IDS, DIFFICULTY } from './themes.js';
-import { newLevel, addProp, setLock, setClueStyle, setSplit, clearLock, removeProp, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP, addPhoto, removePhoto } from './levelops.js';
+import { newLevel, addProp, setLock, setClueStyle, setSplit, clearLock, removeProp, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP, addPhoto, removePhoto, ensureAids, needFor } from './levelops.js';
 import { checkLevel, checkLayout, snapToWall } from './manifest.js';
 
 const HOST_CAP = { desk: 3, lab_bench: 4, side_table: 1 };
@@ -21,6 +21,8 @@ export function generate(opts = {}) {
     if (!level || !layoutLevel(level, rng)) continue;
     if (!checkLevel(level).ok) continue;
     if (rng.chance(DIFFICULTY[difficulty].photo)) hidePhoto(level, rng);
+    if (rng.chance(DIFFICULTY[difficulty].aid)) addAid(level, rng, 'matches');
+    if (rng.chance(DIFFICULTY[difficulty].aid * 0.7)) addAid(level, rng, 'lens');
     level.seed = seed;
     level.gen = { seed, theme, difficulty };
     return level;
@@ -41,6 +43,24 @@ export function hidePhoto(level, rng) {
   photo.at = was;
   if (checkLevel(level).ok) return true;
   thing.at = was; removePhoto(level);
+  return false;
+}
+
+// Makes one clue unreadable without an aid (invisible ink / tiny writing) and hides the aid
+// somewhere that keeps the room solvable.
+export function addAid(level, rng, aid) {
+  if (level.things.some((t) => t.needs === aid)) return false;
+  const clue = rng.shuffle(level.things.filter((t) => needFor(t) === aid && !(aid === 'lens' && propById(level, t.at.prop).type === 'blackboard')))[0];
+  if (!clue) return false;
+  clue.needs = aid;
+  const [item] = ensureAids(level);
+  const spots = rng.shuffle(level.props.filter((p) => { const sl = slotFor(item, p); return sl && thingsAt(level, p.id, sl).length < SLOT_CAP[sl] && p.id !== clue.at.prop; }))
+    .sort((a, b) => thingsAt(level, a.id).length - thingsAt(level, b.id).length);
+  for (const p of spots.slice(0, 8)) {
+    item.at = { prop: p.id, slot: slotFor(item, p) };
+    if (checkLevel(level).ok) return true;
+  }
+  delete clue.needs; ensureAids(level);
   return false;
 }
 
@@ -123,6 +143,11 @@ function build(rng, themeId, difficulty) {
   }
 
   // ---- 2. everything still pending goes to a free spot (hiding places, unlocked furniture)
+  // ...except that now and then the room's parrot has been taught one of the clues
+  if (T.props.includes('parrot') && rng.chance({ easy: 0.5, medium: 0.6, hard: 0.7 }[difficulty])) {
+    const i = pending.findIndex((t) => t.kind === 'clue' && ['plain', 'constraint'].includes(t.style));
+    if (i >= 0) pending.splice(i, 1)[0].at = { prop: addProp(level, 'parrot').id, slot: 'spoken' };
+  }
   for (const thing of rng.shuffle(pending)) {
     let spot = null;
     const hideTypes = avail((c) => c.hide, 1).concat(count('painting') === 1 && T.props.includes('painting') ? ['painting'] : []);
@@ -139,7 +164,8 @@ function build(rng, themeId, difficulty) {
 
   // ---- 3. dress the room: theme signature pieces, then a little decor
   for (const t of T.must) if (!count(t)) addProp(level, t);
-  const decor = rng.shuffle(T.props.filter((t) => { const c = CATALOG[t]; return !count(t) && !c.container && c.place !== 'top'; }));
+  addProp(level, rng.chance(0.65) ? 'wall_art' : 'wall_relief');
+  const decor = rng.shuffle(T.props.filter((t) => { const c = CATALOG[t]; return !count(t) && !c.container && c.place !== 'top' && !(t === 'parrot' && rng.chance(0.6)); }));
   const floorCount = () => level.props.filter((p) => CATALOG[p.type].place !== 'top').length;
   const target = { easy: 12, medium: 15, hard: 18 }[difficulty];
   while (floorCount() < target && decor.length) addProp(level, decor.pop());
@@ -191,7 +217,7 @@ export function layoutLevel(level, rng, keepSize = false) {
 function tryLayout(level, rng) {
   const { w, d } = level.room;
   const bodies = [], zones = [];
-  const needsAccess = (c) => c.container || c.hide || c.inscribe || c.feature;
+  const needsAccess = (c) => c.container || c.hide || c.inscribe || c.feature || c.parrot;
   const zoneOf = (p, depth) => {
     const r = rectOf(p), f = FRONT[p.rot];
     return { x0: f[0] < 0 ? r.x0 - depth : f[0] > 0 ? r.x1 : r.x0, x1: f[0] > 0 ? r.x1 + depth : f[0] < 0 ? r.x0 : r.x1, z0: f[1] < 0 ? r.z0 - depth : f[1] > 0 ? r.z1 : r.z0, z1: f[1] > 0 ? r.z1 + depth : f[1] < 0 ? r.z0 : r.z1 };
@@ -256,8 +282,10 @@ function tryLayout(level, rng) {
     }
     if (!done) return false;
   }
-  for (const rug of level.props.filter((p) => p.type === 'rug')) {
-    const c = CATALOG.rug, anchor = level.props.find((p) => p.type === 'desk' || p.type === 'armchair' || p.type === 'sofa');
+  const rugs = level.props.filter((p) => CATALOG[p.type].place === 'rug');
+  for (const rug of rugs) {
+    // the first rug anchors the main furniture; a second one finds its own patch of floor
+    const c = CATALOG[rug.type], first = rug === rugs[0], anchor = first ? level.props.find((p) => p.type === 'desk' || p.type === 'armchair' || p.type === 'sofa') : { x: (rugs[0].x > 0 ? -1 : 1) * w * 0.5, z: (rugs[0].z > 0 ? -1 : 1) * d * 0.5 };
     rug.rot = w >= d ? 0 : 1;
     const hw = (rug.rot ? c.d : c.w) / 2 + 0.15, hd = (rug.rot ? c.w : c.d) / 2 + 0.15;
     rug.x = Math.max(-w / 2 + hw, Math.min(w / 2 - hw, (anchor ? anchor.x * 0.5 : 0) + rng.range(-0.4, 0.4)));
@@ -367,7 +395,7 @@ export function scamper(level, op, seed = randomSeed()) {
     const copy = clone(level);
     delete copy.gen;
     const rng = new RNG(hashStr(`${op}/${seed}/${i}`));
-    try { if (SCAMPER[op].run(copy, rng)) { refreshPhoto(copy, rng); if (checkLevel(copy).ok) return copy; } } catch (e) { /* try another variation */ }
+    try { if (SCAMPER[op].run(copy, rng)) { ensureAids(copy); refreshPhoto(copy, rng); if (checkLevel(copy).ok) return copy; } } catch (e) { /* try another variation */ }
   }
   return null;
 }

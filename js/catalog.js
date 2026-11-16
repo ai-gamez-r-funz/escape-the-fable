@@ -28,6 +28,7 @@ export const CATALOG = {
   lockbox: { name: 'Lock box', group: 'Containers', place: 'top', w: 0.34, d: 0.24, h: 0.16, container: C(['key', 'digits']), desc: 'A small metal cash box.' },
   // ---- hiding spots
   rug: { name: 'Rug', group: 'Hiding spots', place: 'rug', w: 2.3, d: 1.6, h: 0.02, hide: 'Lift the rug', desc: 'A patterned rug.' },
+  round_rug: { name: 'Round rug', group: 'Hiding spots', place: 'rug', w: 1.9, d: 1.9, h: 0.02, hide: 'Lift the rug', desc: 'A round rug with a bold pattern.' },
   painting: { name: 'Painting', group: 'Hiding spots', place: 'wall', w: 0.95, d: 0.06, h: 0.75, y: 1.25, hide: 'Look behind the painting', desc: 'A framed painting.' },
   plant: { name: 'Potted plant', group: 'Hiding spots', place: 'floor', hug: true, w: 0.5, d: 0.5, h: 1.2, hide: 'Dig through the soil', desc: 'A leafy potted plant.' },
   armchair: { name: 'Armchair', group: 'Hiding spots', place: 'floor', w: 0.9, d: 0.85, h: 0.95, hide: 'Feel under the cushion', desc: 'A comfortable armchair.' },
@@ -47,6 +48,7 @@ export const CATALOG = {
   bookshelf: { name: 'Bookshelf', group: 'Clue surfaces', place: 'floor', hug: true, w: 1.3, d: 0.38, h: 2.0, feature: 'books', desc: 'Shelves of well-thumbed books.' },
   radio: { name: 'Table radio', group: 'Clue surfaces', place: 'top', w: 0.45, d: 0.24, h: 0.3, feature: 'radio', desc: 'A valve radio. It hums faintly.' },
   radio_console: { name: 'Radio console', group: 'Clue surfaces', place: 'floor', hug: true, w: 0.9, d: 0.45, h: 1.05, feature: 'radio', desc: 'A floor-standing radio console.' },
+  parrot: { name: 'Parrot', group: 'Clue surfaces', place: 'floor', hug: true, w: 0.6, d: 0.6, h: 1.8, parrot: true, desc: 'A parrot in a brass cage.' },
   // ---- furniture & decor
   side_table: { name: 'Side table', group: 'Furniture', place: 'floor', w: 0.55, d: 0.55, h: 0.6, host: true, desc: 'A small side table.' },
   lab_bench: { name: 'Lab bench', group: 'Furniture', place: 'floor', hug: true, w: 1.8, d: 0.7, h: 0.9, host: true, desc: 'A workbench with a scrubbed top.' },
@@ -54,6 +56,8 @@ export const CATALOG = {
   stool: { name: 'Stool', group: 'Furniture', place: 'floor', w: 0.38, d: 0.38, h: 0.6, desc: 'A three-legged stool.' },
   floor_lamp: { name: 'Floor lamp', group: 'Furniture', place: 'floor', hug: true, w: 0.4, d: 0.4, h: 1.7, light: 1.45, desc: 'A floor lamp with a warm glow.' },
   mic_stand: { name: 'Microphone stand', group: 'Furniture', place: 'floor', w: 0.4, d: 0.4, h: 1.55, desc: 'A studio microphone. The ON AIR light is off.' },
+  wall_art: { name: 'Modern print', group: 'Furniture', place: 'wall', w: 0.72, d: 0.05, h: 1.0, y: 1.1, desc: 'A modern print. All shapes and colour, very up to the minute.' },
+  wall_relief: { name: 'Wall relief', group: 'Furniture', place: 'wall', w: 1.15, d: 0.1, h: 0.8, y: 1.2, desc: 'A sculpted relief of discs and bars. Somebody here has taste.' },
   calendar: { name: 'Calendar', group: 'Furniture', place: 'wall', w: 0.4, d: 0.03, h: 0.55, y: 1.3, desc: 'A wall calendar.' },
   desk_lamp: { name: 'Desk lamp', group: 'Table-top', place: 'top', w: 0.24, d: 0.24, h: 0.42, light: 0.3, desc: 'A banker\'s lamp.' },
   telephone: { name: 'Telephone', group: 'Table-top', place: 'top', w: 0.26, d: 0.22, h: 0.14, desc: 'A rotary telephone. The line is dead.' },

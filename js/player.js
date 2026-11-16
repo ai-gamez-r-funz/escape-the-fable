@@ -11,6 +11,7 @@ export class Player {
     this.keys = new Set();
     this.enabled = false;
     this.bob = 0;
+    this.sway = 0; this.t = 0; // gentle roll for rooms at sea
     this.drag = false;
     this.quiet = 0;
     this.on = [];
@@ -45,6 +46,7 @@ export class Player {
   }
 
   update(dt, room, colliders) {
+    this.t += dt;
     if (this.enabled) {
       const k = this.keys;
       let f = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
@@ -65,7 +67,7 @@ export class Player {
   }
   apply() {
     this.cam.position.set(this.pos.x, EYE + Math.sin(this.bob) * 0.018, this.pos.z);
-    this.cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    this.cam.rotation.set(this.pitch + Math.sin(this.t * 0.37) * 0.006 * this.sway, this.yaw, Math.sin(this.t * 0.5) * 0.014 * this.sway, 'YXZ');
   }
   dispose() { this.on.forEach((off) => off()); this.unlock(); }
 }

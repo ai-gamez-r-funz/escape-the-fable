@@ -4,7 +4,7 @@ import { CATALOG, LOCK_NAMES, rectOf, FRONT } from './catalog.js';
 import { THEMES, THEME_IDS, DIFFICULTY } from './themes.js';
 import { SYMBOLS, SYMBOL_IDS } from './symbols.js';
 import { RNG, randomSeed } from './rng.js';
-import { newLevel, addProp, removeProp, setLock, clearLock, setClueStyle, setSplit, makeRows, addPhoto, removePhoto, photoDiff, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP, codeFits } from './levelops.js';
+import { newLevel, addProp, removeProp, setLock, clearLock, setClueStyle, setSplit, makeRows, addPhoto, removePhoto, photoDiff, ensureAids, needFor, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP, codeFits } from './levelops.js';
 import { checkLevel, thingInfo, lockSummary, propName, snapToWall, wallOf, cleanLevel, parseLevel, encodeShare, solve } from './manifest.js';
 import { generate, layoutLevel, scamper, SCAMPER, refreshPhoto, hidePhoto } from './generator.js';
 import { isWord } from './words.js';
@@ -12,9 +12,9 @@ import { TIERS } from './mergepuzzle.js';
 import { el, $, toast, symbolSVG } from './ui.js';
 
 const ROLE_COLOR = { container: '#d9a21b', hide: '#2f8f9c', clue: '#8a63b5', exit: '#c8473c', decor: '#9c9280' };
-const roleOf = (c) => (c.container ? (c.container.exit ? 'exit' : 'container') : c.hide ? 'hide' : c.inscribe || c.feature ? 'clue' : 'decor');
+const roleOf = (c) => (c.container ? (c.container.exit ? 'exit' : 'container') : c.hide ? 'hide' : c.inscribe || c.feature || c.parrot ? 'clue' : 'decor');
 const STYLE_NAMES = { logic: 'Code-breaker lines (deduce it)', plain: 'Written out in full', torn: 'Note torn in two halves', clock: 'Stopped clock', books: 'Book count on a shelf', radio: 'Radio dial frequency' };
-const SLOT_WORD = { holds: 'Inside the', hidden: 'Hidden at the', shown: 'Written on the', secret: 'Secretly in the disturbed' };
+const SLOT_WORD = { spoken: 'Taught to the', holds: 'Inside the', hidden: 'Hidden at the', shown: 'Written on the', secret: 'Secretly in the disturbed' };
 const STORE = 'escape-the-fable/workshop';
 
 export class Editor {
@@ -92,6 +92,9 @@ export class Editor {
     const before = plan();
     fn();
     delete this.level.gen;
+    // reading aids follow the clues: drop a need that no longer fits where the clue sits, keep the aid items in step
+    for (const t of this.level.things) if (t.needs && needFor(t) !== t.needs) delete t.needs;
+    this.autoPlace(ensureAids(this.level));
     // moving furniture makes the old photograph wrong: take a fresh one
     if (this.level.photo && plan() !== before) { placeTops(this.level); refreshPhoto(this.level, this.rng); if (!this.level.photo) toast('The photograph puzzle no longer worked with this floor plan and was removed.', 5000); }
     if (!quiet) this.refresh();
@@ -208,13 +211,18 @@ export class Editor {
     const c = CATALOG[p.type];
     if (c.place === 'wall') return this.edit(() => snapToWall(this.level, p, { N: 'E', E: 'S', S: 'W', W: 'N' }[wallOf(this.level, p) || 'W']));
     if (c.place === 'top') return toast('Table-top pieces turn with the furniture they sit on.');
-    this.edit(() => { p.rot = (p.rot + 1) % 4; });
+    this.edit(() => {
+      p.rot = (p.rot + 1) % 4;
+      // keep the turned piece inside the walls
+      const L = this.level, r = rectOf(p), hw = (r.x1 - r.x0) / 2, hd = (r.z1 - r.z0) / 2;
+      p.x = Math.max(-L.room.w / 2 + hw, Math.min(L.room.w / 2 - hw, p.x)); p.z = Math.max(-L.room.d / 2 + hd, Math.min(L.room.d / 2 - hd, p.z));
+    });
   }
 
   // Put freshly created keys and clues somewhere sensible that keeps the room solvable.
   autoPlace(owner) {
     const L = this.level;
-    for (const t of thingsFor(L, owner.id).filter((x) => !x.at)) {
+    for (const t of (Array.isArray(owner) ? owner : thingsFor(L, owner.id)).filter((x) => !x.at)) {
       const spots = this.rng.shuffle(this.spotsFor(t)).sort((a, b) => thingsAt(L, a.prop.id).length - thingsAt(L, b.prop.id).length);
       for (const s of spots) {
         t.at = { prop: s.prop.id, slot: s.slot };
@@ -355,7 +363,10 @@ export class Editor {
       el('option', { value: '' }, '— not placed yet —'),
       this.spotsFor(t).concat(t.at && !this.spotsFor(t).some((s) => s.prop.id === t.at.prop) && propById(L, t.at.prop) ? [{ prop: propById(L, t.at.prop), slot: t.at.slot }] : []).map((s) => el('option', { value: s.prop.id + '/' + s.slot }, `${SLOT_WORD[s.slot]} ${propName(s.prop)}`)));
     sel.value = t.at ? t.at.prop + '/' + t.at.slot : '';
-    return el('div', { class: 'thing' + (t.at ? '' : ' bad') }, el('b', {}, info.name), el('span', { class: 'tiny' }, info.lines.filter((l) => !/^\(|^Combination:$|^One of these/.test(l)).join(' ').slice(0, 90)), sel);
+    const aid = needFor(t);
+    const need = aid ? el('select', { onchange: (e) => this.edit(() => { if (e.target.value) t.needs = aid; else delete t.needs; }) }, el('option', { value: '' }, 'Readable as found'), el('option', { value: '1' }, aid === 'matches' ? 'Invisible ink: needs the matchbook' : 'Tiny writing: needs the magnifying glass')) : null;
+    if (need) need.value = t.needs ? '1' : '';
+    return el('div', { class: 'thing' + (t.at ? '' : ' bad') }, el('b', {}, info.name), el('span', { class: 'tiny' }, info.lines.filter((l) => !/^\(|^Combination:$|^One of these/.test(l)).join(' ').slice(0, 90)), sel, need);
   }
   lockCard(p) {
     const L = this.level, c = CATALOG[p.type], lock = p.lock, kids = [];
@@ -405,7 +416,7 @@ export class Editor {
       const here = thingsAt(L, p.id);
       out.push(el('div', { class: 'card' },
         el('h3', {}, el('span', { class: 'grow' }, c.name), el('button', { class: 'btn small', onclick: () => this.rotate() }, 'Rotate'), el('button', { class: 'btn small', onclick: () => this.remove() }, 'Delete')),
-        el('p', { class: 'tiny' }, c.container ? (c.container.exit ? 'The way out. Opening it wins the game.' : 'A container: it can be locked and things can be placed inside.') : c.hide ? `A hiding spot ("${c.hide}").` : c.inscribe ? 'A writing surface: it can display a written clue.' : c.feature ? `Can display a code as a ${c.feature === 'books' ? 'count of coloured books' : c.feature === 'clock' ? 'stopped time' : 'radio frequency'}.` : c.host ? 'Furniture. Table-top pieces can sit on it.' : 'Decoration.'),
+        el('p', { class: 'tiny' }, c.container ? (c.container.exit ? 'The way out. Opening it wins the game.' : 'A container: it can be locked and things can be placed inside.') : c.hide ? `A hiding spot ("${c.hide}").` : c.inscribe ? 'A writing surface: it can display a written clue.' : c.feature ? `Can display a code as a ${c.feature === 'books' ? 'count of coloured books' : c.feature === 'clock' ? 'stopped time' : 'radio frequency'}.` : c.parrot ? 'A talking parrot. It can be taught one short clue, which it gives up after a bell-song memory game. Otherwise it just chats.' : c.host ? 'Furniture. Table-top pieces can sit on it.' : 'Decoration.'),
         c.container ? this.lockCard(p) : null,
         photoDiff(L, p.id) ? el('p', { class: 'tiny' }, '📷 Disturbed since the photograph was taken' + (L.photo.diffs.find((x) => x.prop === p.id).gone ? ' (it is missing from the photo).' : ' (it stands elsewhere in the photo).')) : null,
         here.length ? [el('h4', {}, 'Placed here'), ...here.map((t) => { const owner = propById(L, t.for); return el('div', { class: 'thing' }, el('b', { html: (owner && owner.lock.symbol ? symbolSVG(owner.lock.symbol, 16) + ' ' : '') + thingInfo(L, t).name }), el('span', { class: 'tiny' }, owner ? `for the ${propName(owner)} · ` : ''), el('button', { class: 'linkish', onclick: () => this.edit(() => { t.at = null; }) }, 'take out')); })] : null));
@@ -418,6 +429,8 @@ export class Editor {
     out.push(el('div', { class: 'card' }, el('h3', {}, el('span', { class: 'grow' }, 'Photograph puzzle'), L.photo ? el('button', { class: 'btn small', onclick: () => this.edit(() => removePhoto(L)) }, 'Remove') : el('button', { class: 'btn small', onclick: () => this.addPhoto() }, 'Add')),
       L.photo && photo ? [el('p', { class: 'tiny' }, `An old photo of the room. Disturbed since: ${L.photo.diffs.map((x) => propName(propById(L, x.prop))).join(', ')}. Once the player spots all three, disturbed decor can be searched; place things "secretly" in it.`), this.thingRow(photo)]
         : el('p', { class: 'tiny' }, 'Spot the difference: an old photo shows the room before three pieces of furniture were disturbed. Finding them reveals a secret hiding place.')));
+    const aids = L.things.filter((t) => t.kind === 'aid');
+    if (aids.length) out.push(el('div', { class: 'card' }, el('h3', {}, 'Reading aids'), el('p', { class: 'tiny' }, 'Needed to read a clue written in invisible ink or in tiny writing. They appear when a clue is set to need them.'), ...aids.map((t) => this.thingRow(t))));
     // SCAMPER
     const tip = el('p', { class: 'scamper-tip' }, 'Remix the room with one idea at a time. Each remix keeps the room solvable.');
     out.push(el('div', { class: 'card' }, el('h3', {}, 'Remix (SCAMPER)'), el('div', { class: 'scamper' }, Object.keys(SCAMPER).map((k) => el('button', { title: `${SCAMPER[k].name}: ${SCAMPER[k].tip}`, onmouseenter: () => { tip.innerHTML = `<b>${SCAMPER[k].name}.</b> ${SCAMPER[k].tip}.`; }, onclick: () => this.remix(k) }, k))), tip));

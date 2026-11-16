@@ -6,13 +6,14 @@ import { parseLevel, decodeShare, checkLevel } from './manifest.js';
 import { randomSeed } from './rng.js';
 import { World, makeRenderer } from './world.js';
 import { Game } from './game.js';
-import { el, $, toast, closeModal, setMuted, muted } from './ui.js';
+import { el, $, toast, closeModal, setMuted, muted, ambience } from './ui.js';
 
 // Slow pan around a generated room behind the menu.
 class MenuScene {
   constructor(app) {
     this.app = app;
     this.world = new World(generate({ difficulty: 'medium' }));
+    app.look(this.world.theme);
     this.camera = new THREE.PerspectiveCamera(62, 1, 0.05, 60);
     this.t = Math.random() * 6;
   }
@@ -51,6 +52,12 @@ class App {
     this.renderer.setSize(innerWidth, innerHeight, false);
   }
   setMode(mode) { if (this.mode) this.mode.dispose(); this.mode = mode; }
+  // per-setting colour grade: exposure, vignette and tint
+  look(theme) {
+    const m = theme && theme.mood;
+    this.renderer.toneMappingExposure = m ? m.exposure : 1.05;
+    $('#grade').style.background = m ? `radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,${m.vignette}) 118%), ${m.tint.startsWith('rgba') ? `linear-gradient(${m.tint}, ${m.tint})` : 'none'}` : 'none';
+  }
 
   bindMenu() {
     const sel = $('#sel-theme');
@@ -66,7 +73,7 @@ class App {
       const f = e.target.files[0]; e.target.value = '';
       if (f) this.loadText(await f.text());
     };
-    $('#btn-mute').onclick = () => { setMuted(!muted); $('#btn-mute').textContent = 'Sound: ' + (muted ? 'off' : 'on'); };
+    $('#btn-mute').onclick = () => { setMuted(!muted); if (muted) ambience(null); $('#btn-mute').textContent = 'Sound: ' + (muted ? 'off' : 'on'); };
     addEventListener('dragover', (e) => e.preventDefault());
     addEventListener('drop', async (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && !$('#menu').hidden) this.loadText(await f.text()); });
     addEventListener('hashchange', () => this.route());
@@ -113,6 +120,7 @@ class App {
   async openEditor(level) {
     const { Editor } = await import('./editor.js');
     this.setMode(null);
+    this.look(null);
     $('#menu').hidden = true;
     this.canvas.hidden = true;
     if (!this.editor) this.editor = new Editor(this);

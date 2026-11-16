@@ -58,6 +58,10 @@ export const shapeSVG = (tier, size = 28) => `<svg width="${size}" height="${siz
 
 export function thingIcon(t, info, size = 30) {
   if (t.kind === 'shape') return shapeSVG(info.tier, size);
+  if (t.kind === 'aid') return t.aid === 'matches'
+    ? `<svg width="${size}" height="${size}" viewBox="0 0 24 24"><path d="M4 9H20V21H4Z" fill="#c8473c" stroke="#5a1f1a"/><path d="M4 9L7 4H17L20 9Z" fill="#e2b93b" stroke="#5a431a"/><path d="M8 13H16M8 16.5H13" stroke="#f3ecd8" stroke-width="1.4"/><path d="M12 4C13.5 2.5 12 1.5 12.6 0.5C14.5 2 14 3.4 12 4Z" fill="#d9792b"/></svg>`
+    : `<svg width="${size}" height="${size}" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6.5" fill="#cfe6ea" stroke="#b8923a" stroke-width="2"/><path d="M15 15L21.5 21.5" stroke="#5a431a" stroke-width="3" stroke-linecap="round"/><path d="M7 8.5C8 6.8 9.5 6.3 11 6.5" fill="none" stroke="#fff" stroke-width="1.2"/></svg>`;
+  if (t.blank) return `<svg width="${size}" height="${size}" viewBox="0 0 24 24"><path d="M5 2.5H16L20 6.5V21.5H5Z" fill="#fbf7ea" stroke="#5a431a" stroke-dasharray="2 1.2"/><text x="12.5" y="16" text-anchor="middle" font-size="9" font-weight="bold" fill="#b9ab8a">?</text></svg>`;
   if (t.kind === 'photo') return `<svg width="${size}" height="${size}" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" fill="#f3ecd8" stroke="#5a431a"/><rect x="4.5" y="6" width="15" height="10.5" fill="#b89a6a"/><path d="M4.5 16.5L9.5 11L13 14.5L15.5 12L19.5 16.5Z" fill="#6e5636"/><circle cx="16" cy="9" r="1.4" fill="#f3ecd8"/></svg>`;
   if (t.half) {
     const col = t.kind === 'key' ? '#b8923a' : '#8d9698';
@@ -90,8 +94,52 @@ const SFX = {
   found: () => { tone(660, 0, 0.12, 'triangle'); tone(880, 0.1, 0.2, 'triangle'); },
   merge: () => { tone(440, 0, 0.1, 'triangle'); tone(587, 0.07, 0.1, 'triangle'); tone(784, 0.14, 0.2, 'triangle'); },
   slide: () => tone(220, 0, 0.08, 'sine', 0.08),
+  squawk: () => { tone(900, 0, 0.07, 'sawtooth', 0.06); tone(1300, 0.06, 0.09, 'sawtooth', 0.06); tone(700, 0.14, 0.12, 'sawtooth', 0.05); },
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.14, 0.4, 'triangle', 0.13)),
 };
+// Quiet looping room tone per setting, synthesised from filtered noise and slow oscillators.
+let ambient = null;
+export function ambience(kind) {
+  if (ambient) { try { ambient.gain.gain.linearRampToValueAtTime(0, ac.currentTime + 0.4); const old = ambient; setTimeout(() => old.nodes.forEach((n) => { try { n.stop(); } catch (e) { /* not a source */ } }), 600); } catch (e) { /* ignore */ } ambient = null; }
+  if (!kind || muted) return;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    const out = ac.createGain(); out.gain.value = 0; out.gain.linearRampToValueAtTime(1, ac.currentTime + 1.5); out.connect(ac.destination);
+    const nodes = [];
+    const noise = (type, freq, q, vol) => {
+      const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+      const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+      const g = ac.createGain(); g.gain.value = vol;
+      src.connect(f).connect(g).connect(out); src.start(); nodes.push(src);
+      return g;
+    };
+    const osc = (freq, vol, type = 'sine') => { const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = freq; g.gain.value = vol; o.connect(g).connect(out); o.start(); nodes.push(o); return g; };
+    const lfo = (target, rate, depth) => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = rate; g.gain.value = depth; o.connect(g).connect(target.gain); o.start(); nodes.push(o); };
+    if (kind === 'rain') { noise('highpass', 2600, 0.4, 0.035); noise('lowpass', 420, 0.5, 0.05); }
+    else if (kind === 'hum') { osc(60, 0.035); osc(120, 0.012); noise('lowpass', 300, 0.6, 0.05); }
+    else if (kind === 'static') { lfo(noise('bandpass', 3200, 0.8, 0.012), 0.23, 0.008); osc(50, 0.02); }
+    else if (kind === 'sea') { lfo(noise('lowpass', 520, 0.4, 0.07), 0.13, 0.05); lfo(osc(46, 0.05), 3.1, 0.02); }
+    else if (kind === 'clock') {
+      // tick... tock: scheduled a little ahead, forever
+      const g = ac.createGain(); g.gain.value = 1; g.connect(out);
+      let next = ac.currentTime + 0.5, n = 0;
+      const timer = setInterval(() => { while (next < ac.currentTime + 1.5) { const o = ac.createOscillator(), e = ac.createGain(); o.type = 'square'; o.frequency.value = n++ % 2 ? 1500 : 1900; e.gain.setValueAtTime(0.03, next); e.gain.exponentialRampToValueAtTime(0.0001, next + 0.03); o.connect(e).connect(g); o.start(next); o.stop(next + 0.05); next += 1; } }, 400);
+      nodes.push({ stop: () => clearInterval(timer) });
+      noise('lowpass', 250, 0.5, 0.025);
+    }
+    ambient = { gain: out, nodes };
+  } catch (e) { /* no audio */ }
+}
+
+// a single pitched note (the parrot's bells)
+export function note(freq, dur = 0.35) {
+  if (muted) return;
+  try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); tone(freq, 0, dur, 'triangle', 0.14); tone(freq * 2, 0, dur * 0.6, 'sine', 0.05); } catch (e) { /* no audio */ }
+}
+
 export function sfx(name) {
   if (muted) return;
   try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); SFX[name](); } catch (e) { /* no audio */ }

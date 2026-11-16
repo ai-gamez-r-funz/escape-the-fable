@@ -3,14 +3,17 @@ import * as THREE from 'three';
 import { CATALOG } from './catalog.js';
 import { THEMES } from './themes.js';
 import { SYMBOLS } from './symbols.js';
-import { propById, thingsFor, thingsAt, photoDiff, canSecret } from './levelops.js';
+import { propById, thingsFor, thingsAt, photoDiff, canSecret, readable } from './levelops.js';
 import { notebookUI, pending } from './notebook.js';
 import { thingInfo, propName, lockSummary, newProgress, canUnlock, possibleActions, checkLevel, encodeShare } from './manifest.js';
 import { World } from './world.js';
 import { Player } from './player.js';
-import { el, $, openModal, closeModal, modalOpen, toast, thingIcon, symbolSVG, sfx } from './ui.js';
+import { el, $, openModal, closeModal, modalOpen, toast, thingIcon, symbolSVG, sfx, ambience } from './ui.js';
+
+const BLANK = { name: 'Blank sheet of paper', title: 'Blank sheet of paper', lines: ['A sheet of paper with nothing on it. An odd thing to hide. It smells faintly of lemon.'] };
 import { digitsUI, dialUI, wheelUI } from './lockui.js';
 import { mergeUI } from './mergeui.js';
+import { parrotUI } from './parrotui.js';
 
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -26,7 +29,9 @@ export class Game {
     this.prog = newProgress();
     this.carry = []; this.notes = []; this.lockState = {}; this.hintLevel = {}; this.hints = 0;
     // notebook work: solved code-breakers, pieced notes, joined halves, crossed-out words, photograph
-    this.worked = new Set(); this.pieced = new Set(); this.joined = new Set(); this.struck = {}; this.sheet = {}; this.photoFound = new Set(); this.photoDone = false;
+    this.worked = new Set(); this.pieced = new Set(); this.joined = new Set(); this.struck = {}; this.sheet = {}; this.photoFound = new Set(); this.photoDone = false; this.revealed = new Set();
+    app.look(this.theme);
+    this.player.sway = this.theme.mood.sway || 0;
     this.time = 0; this.won = false; this.started = false; this.target = null;
     this.totalLocks = level.props.filter((p) => p.lock).length;
     this.handlers = [];
@@ -70,13 +75,25 @@ export class Game {
   // What the player is carrying, as shown: joined halves appear as the whole object.
   items() {
     const out = [];
-    for (const id of this.carry) {
-      const t = this.thing(id);
+    const held = this.carry.map((id) => this.thing(id));
+    const matches = held.find((t) => t.kind === 'aid' && t.aid === 'matches'), blank = held.find((t) => t.kind === 'clue');
+    for (const t of held) {
+      // a note in invisible ink sits in the pocket as a blank sheet until it is warmed
+      if (t.kind === 'clue') { out.push({ t: { ...t, blank: true }, info: BLANK, partner: matches ? thingInfo(this.level, matches) : null, verb: 'Warm it over a match', act: () => this.reveal(t), idle: 'There must be a way to make it give up its secret.' }); continue; }
+      if (t.kind === 'aid') { const use = t.aid === 'matches' && blank; out.push({ t, info: thingInfo(this.level, t), partner: use ? BLANK : null, verb: 'Hold a match under the blank sheet', act: () => this.reveal(blank), idle: t.aid === 'lens' ? 'Used automatically when you examine tiny writing.' : 'Nothing to use it on yet.' }); continue; }
       if (t.half && this.joined.has(t.for)) { if (t.half === 'a') { const whole = { ...t, half: undefined }; out.push({ t: whole, info: thingInfo(this.level, whole) }); } continue; }
       const mate = t.half && this.carry.map((x) => this.thing(x)).find((o) => o.for === t.for && o.kind === t.kind && o.half && o.half !== t.half);
-      out.push({ t, info: thingInfo(this.level, t), partner: mate ? thingInfo(this.level, mate) : null });
+      out.push({ t, info: thingInfo(this.level, t), partner: mate ? thingInfo(this.level, mate) : null, act: () => this.join(t.for) });
     }
     return out;
+  }
+  reveal(t) {
+    this.revealed.add(t.id);
+    this.carry = this.carry.filter((id) => id !== t.id);
+    this.notes.push(t.id);
+    sfx('found');
+    toast('Brown writing creeps across the paper as it warms. The message is copied into your notebook (N).', 5000);
+    this.refreshHud();
   }
   join(pid) {
     this.joined.add(pid);
@@ -101,7 +118,7 @@ export class Game {
     setTimeout(() => this.refreshHud(), 60);
   }
   showIntro() {
-    const ok = () => { this.started = true; closeModal(); };
+    const ok = () => { this.started = true; ambience(this.theme.mood.sound); closeModal(); };
     this.modal(el('div', { class: 'intro' },
       el('p', { class: 'kicker' }, `${this.theme.name} · ${this.theme.year}`), el('h1', {}, this.level.name), el('p', { class: 'story' }, this.level.intro || this.theme.intro),
       el('ul', { class: 'howto' },
@@ -112,6 +129,8 @@ export class Game {
       el('button', { class: 'btn primary big', autofocus: true, onclick: ok }, 'Begin')), { sticky: true, onClose: () => { this.started = true; } });
   }
   paper(t, extra) {
+    const blank = t.needs === 'matches' && !this.revealed.has(t.id);
+    if (blank) return el('div', { class: 'paper' }, el('span', { class: 'bigicon', html: thingIcon({ blank: true }, BLANK, 64) }), el('h3', {}, BLANK.title), el('p', {}, BLANK.lines[0]));
     const info = thingInfo(this.level, t);
     return el('div', { class: 'paper' + (t.kind === 'clue' && t.at.slot !== 'shown' ? ' note' : '') + (t.style === 'logic' ? ' mono' : '') }, info.symbol ? el('span', { class: 'stamp', html: symbolSVG(info.symbol, 44), title: `Marked with a ${SYMBOLS[info.symbol].name.toLowerCase()}` }) : null,
       t.kind !== 'clue' ? el('span', { class: 'bigicon', html: thingIcon(t, info, 64) }) : null, el('h3', {}, info.title), ...info.lines.map((l) => el('p', {}, l)), extra || null);
@@ -120,7 +139,7 @@ export class Game {
   found(things, heading) {
     sfx('found');
     this.modal(el('div', { class: 'found' }, el('p', { class: 'kicker' }, heading), el('h2', {}, things.length > 1 ? 'You found a few things' : 'You found something'), el('div', { class: 'papers' }, things.map((t) => this.paper(t))),
-      el('p', { class: 'sub' }, things.some((t) => t.kind === 'photo') ? 'The photograph is tucked into your notebook (N). Study it there.' : things.some((t) => t.style === 'logic') ? 'Copied into your notebook (N), where you can work it out.' : things.some((t) => t.kind === 'clue') ? 'Clues are copied into your notebook (N).' : things.some((t) => t.half) ? 'It goes into your pocket. It looks like half of something (I).' : 'It goes into your pocket (I).'), el('button', { class: 'btn primary', autofocus: true, onclick: () => closeModal() }, 'Take it')));
+      el('p', { class: 'sub' }, things.some((t) => t.needs === 'matches') ? 'It goes into your pocket (I). Why would anyone hide a blank sheet?' : things.some((t) => t.kind === 'photo') ? 'The photograph is tucked into your notebook (N). Study it there.' : things.some((t) => t.style === 'logic') ? 'Copied into your notebook (N), where you can work it out.' : things.some((t) => t.kind === 'clue') ? 'Clues are copied into your notebook (N).' : things.some((t) => t.half) ? 'It goes into your pocket. It looks like half of something (I).' : 'It goes into your pocket (I).'), el('button', { class: 'btn primary', autofocus: true, onclick: () => closeModal() }, 'Take it')));
   }
   notebook(tab = 'clues') {
     if (!this.started || this.won) return;
@@ -148,6 +167,7 @@ export class Game {
   }
   promptFor(p) {
     const { def, cat } = p;
+    if (cat.parrot) return 'Talk to the parrot';
     if (cat.container) return this.prog.opened.has(def.id) ? null : def.lock ? `Inspect the lock on the ${propName(def)}` : `Open the ${propName(def)}`;
     if (cat.hide) return this.prog.searched.has(def.id) ? null : cat.hide;
     if (this.disturbed(def)) return `Search the ${propName(def)}`;
@@ -166,6 +186,11 @@ export class Game {
       const got = thingsAt(level, def.id, 'secret');
       return got.length ? this.collect(got, `You search the ${propName(def)}…`) : this.say(`The ${propName(def)} has been moved, but nothing is hidden here.`);
     }
+    if (cat.parrot) {
+      const t = thingsAt(level, def.id, 'spoken')[0], st = (this.lockState[def.id] = this.lockState[def.id] || {});
+      const secret = t ? { symbol: propById(level, t.for).lock.symbol, line: thingInfo(level, t).lines[0] } : null;
+      return this.modal(parrotUI(this.theme, def.id, st, secret, () => { if (!this.prog.known.has(t.id)) { this.prog.known.add(t.id); this.notes.push(t.id); this.refreshHud(); } }));
+    }
     if (cat.container) {
       if (this.prog.opened.has(def.id)) return this.say(`The ${propName(def)} is open and empty now.`);
       return def.lock ? this.tryLock(def) : this.open(def);
@@ -178,6 +203,7 @@ export class Game {
       return got.length ? this.collect(got, cat.hide + '…') : this.say(`${cat.hide}… nothing but dust.`);
     }
     const shown = thingsAt(level, def.id, 'shown')[0];
+    if (shown && !readable(level, shown, this.prog.known)) return this.say(`There is writing on the ${propName(def)}, marked with a ${SYMBOLS[propById(level, shown.for).lock.symbol].name.toLowerCase()}, but it is far too tiny to read. You need something to magnify it.`);
     if (shown) {
       const fresh = !this.prog.known.has(shown.id);
       if (fresh) { this.prog.known.add(shown.id); this.notes.push(shown.id); }
@@ -186,9 +212,9 @@ export class Game {
     this.say(cat.desc);
   }
   collect(things, heading) {
-    for (const t of things) { this.prog.known.add(t.id); (t.kind === 'clue' || t.kind === 'photo' ? this.notes : this.carry).push(t.id); }
+    for (const t of things) { this.prog.known.add(t.id); ((t.kind === 'clue' && t.needs !== 'matches') || t.kind === 'photo' ? this.notes : this.carry).push(t.id); }
     this.refreshHud();
-    if (things.some((t) => t.half) && this.items().some((i) => i.partner)) setTimeout(() => toast('Two of the pieces in your pocket look as if they belong together. Press I.', 5000), 400);
+    if (things.some((t) => t.half || t.kind === 'aid' || t.needs) && this.items().some((i) => i.partner)) setTimeout(() => toast('Two of the pieces in your pocket look as if they belong together. Press I.', 5000), 400);
     this.found(things, heading);
   }
   tryLock(def) {
@@ -230,7 +256,11 @@ export class Game {
     const a = acts.find((x) => x.type === 'open' && x.prop.lock) || acts.find((x) => x.type !== 'open') || acts[0];
     const names = this.level.photo ? this.level.photo.diffs.map((d) => propName(propById(this.level, d.prop))) : [];
     let text = 'You have done everything there is to do here.', lvl = 1;
-    if (a) {
+    const combo = this.items().find((i) => i.partner);
+    if (combo) {
+      lvl = this.hintLevel.combine = Math.min(3, (this.hintLevel.combine || 0) + 1);
+      text = ['Two things in your pockets belong together.', 'Open your inventory (I): something there is glowing.', `In your inventory, use the ${combo.info.name.toLowerCase()} with the ${combo.partner.name.toLowerCase()}.`][lvl - 1];
+    } else if (a) {
       const k = a.type + a.prop.id;
       lvl = this.hintLevel[k] = Math.min(3, (this.hintLevel[k] || 0) + 1);
       const name = propName(a.prop), lock = a.prop.lock, cat = CATALOG[a.prop.type];
@@ -241,6 +271,7 @@ export class Game {
         text = [sym ? `You already hold everything needed for the lock marked with the ${sym}.` : 'Something you are carrying can open one of the obstacles in this room.', `It is the ${name}. ${how}`, `Open the ${name}: ${lockSummary(this.level, a.prop)}.`][lvl - 1];
       } else if (a.type === 'open') text = ['Not everything in this room is locked.', `Have you opened the ${name}?`, `Open the ${name}.`][lvl - 1];
       else if (a.type === 'secret') text = this.photoDone ? ['The photograph showed you which furniture was disturbed. Have you searched all of it?', `Take a closer look at the ${name}.`, `Search the ${name}.`][lvl - 1] : ['Something in your notebook deserves a closer look.', 'Study the old photograph in your notebook and compare it with the room as it is now.', `In the photograph, the ${names.join(', the ')} are not where they are now. Click them, then search the ${name}.`][lvl - 1];
+      else if (a.type === 'talk') text = ['Not every clue in this room is written down.', `The ${this.theme.parrot.name ? 'parrot' : name} knows something. Ask for its secret and ring its bell song back to it.`, 'Talk to the parrot, press Listen, then ring the same bells in the same order, three rounds running.'][lvl - 1];
       else if (a.type === 'search') text = ['Something is still hidden in the room. Search the furniture.', `Take a closer look at the ${name}.`, `${cat.hide}.`][lvl - 1];
       else text = ['A clue is sitting in plain sight that you have not examined yet.', `Take a closer look at the ${name}.`, `Examine the ${name}.`][lvl - 1];
     }
@@ -280,7 +311,9 @@ export class Game {
     }
     const label = target && this.promptFor(target);
     this.target = target;
-    this.world.highlight(target && label ? target.def.id : null);
+    // only things worth interacting with glow; plain decoration just gets its label
+    const c = target && target.cat, live = c && (c.container || c.hide || c.parrot || this.disturbed(target.def) || thingsAt(this.level, target.def.id, 'shown').length);
+    this.world.highlight(target && label && live ? target.def.id : null);
     this.ui.prompt.textContent = label || '';
     this.ui.prompt.hidden = !label;
     this.ui.timer.textContent = fmtTime(this.time);
@@ -288,6 +321,7 @@ export class Game {
   }
   dispose() {
     this.dead = true;
+    ambience(null);
     this.handlers.forEach((off) => off());
     this.player.dispose();
     this.world.dispose();

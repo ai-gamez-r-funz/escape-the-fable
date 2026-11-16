@@ -90,29 +90,96 @@ export function wallTex(style, pal, len, rng) {
   }, [len / 1.3, 2.3]);
 }
 
-export function rugTex(pal, rng) {
-  const [a, b, c] = pal.rug.map(css);
-  return canvasTex(512, 356, (g, w, h) => {
+// Geometric mid-century carpet designs in the room's palette.
+export function rugTex(pal, rng, round) {
+  const [a, b, c] = pal.rug.map(css), ink = '#2b2118', cols = [a, b, c, css(pal.accent)];
+  const W = round ? 400 : 512, H = round ? 400 : 356;
+  return canvasTex(W, H, (g, w, h) => {
     g.fillStyle = a; g.fillRect(0, 0, w, h);
-    g.strokeStyle = b; g.lineWidth = 10; g.strokeRect(22, 22, w - 44, h - 44);
-    g.strokeStyle = c; g.lineWidth = 5; g.strokeRect(40, 40, w - 80, h - 80);
-    const kind = rng.int(0, 2);
-    g.fillStyle = b;
-    for (let i = 0; i < 5; i++) {
-      const x = 96 + i * 80, y = h / 2;
-      g.beginPath();
-      if (kind === 0) { g.moveTo(x, y - 60); g.lineTo(x + 34, y); g.lineTo(x, y + 60); g.lineTo(x - 34, y); }
-      else if (kind === 1) g.arc(x, y, 30, 0, 7);
-      else g.rect(x - 26, y - 46, 52, 92);
-      g.fill();
-      g.fillStyle = i % 2 ? b : c;
+    if (round) {
+      const kind = rng.int(0, 2);
+      if (kind === 0) [190, 150, 112, 76, 40].forEach((r, i) => { g.fillStyle = cols[(i + 1) % 3]; g.beginPath(); g.arc(200, 200, r, 0, 7); g.fill(); });
+      else if (kind === 1) { for (let i = 0; i < 12; i++) { g.fillStyle = cols[1 + (i % 2)]; g.beginPath(); g.moveTo(200, 200); g.arc(200, 200, 190, (i * Math.PI) / 6, ((i + 1) * Math.PI) / 6); g.fill(); } g.fillStyle = a; g.beginPath(); g.arc(200, 200, 70, 0, 7); g.fill(); }
+      else { g.fillStyle = b; g.beginPath(); g.arc(200, 200, 186, 0, 7); g.fill(); g.fillStyle = c; g.beginPath(); g.arc(200, 200, 186, Math.PI * 0.75, Math.PI * 1.75); g.fill(); g.fillStyle = a; g.beginPath(); g.arc(250, 150, 60, 0, 7); g.fill(); g.fillStyle = ink; g.beginPath(); g.arc(150, 250, 34, 0, 7); g.fill(); }
+      g.strokeStyle = ink; g.lineWidth = 6; g.beginPath(); g.arc(200, 200, 194, 0, 7); g.stroke();
+      return;
     }
-    g.fillStyle = 'rgba(255,255,255,0.5)'; for (let x = 4; x < w; x += 9) { g.fillRect(x, 0, 3, 12); g.fillRect(x, h - 12, 3, 12); }
+    const kind = rng.int(0, 5), m = 34;
+    if (kind === 0) { // diamonds
+      g.fillStyle = b; for (let i = 0; i < 5; i++) { const x = 96 + i * 80, y = h / 2; g.beginPath(); g.moveTo(x, y - 70); g.lineTo(x + 38, y); g.lineTo(x, y + 70); g.lineTo(x - 38, y); g.fill(); g.fillStyle = i % 2 ? b : c; }
+    } else if (kind === 1) { // nested rectangles with an offset block
+      [[m, b], [m + 34, a], [m + 60, c], [m + 96, a]].forEach(([k, col]) => { g.fillStyle = col; g.fillRect(k, k, w - 2 * k, h - 2 * k); });
+      g.fillStyle = b; g.fillRect(w * 0.56, h * 0.36, w * 0.2, h * 0.28); g.fillStyle = ink; g.fillRect(w * 0.26, h * 0.43, w * 0.16, h * 0.14);
+    } else if (kind === 2) { // chevrons
+      g.lineWidth = 26; g.lineJoin = 'miter';
+      for (let i = -1; i < 9; i++) { g.strokeStyle = cols[1 + (i & 1)]; g.beginPath(); g.moveTo(i * 68, m); g.lineTo(i * 68 + 60, h / 2); g.lineTo(i * 68, h - m); g.stroke(); }
+    } else if (kind === 3) { // Bauhaus quarter-circle tiles
+      const t = (h - 2 * m) / 3;
+      for (let y = 0; y < 3; y++) for (let x = 0; x * t < w - 2 * m - 1; x++) {
+        const px = m + x * t, py = m + y * t, q = rng.int(0, 3);
+        g.fillStyle = cols[rng.int(0, 2)]; g.fillRect(px, py, t, t);
+        g.fillStyle = cols[1 + ((x + y) & 1)]; g.beginPath(); const cx = px + (q & 1 ? t : 0), cy = py + (q & 2 ? t : 0); g.moveTo(cx, cy); g.arc(cx, cy, t, 0, 7); g.save(); g.beginPath(); g.rect(px, py, t, t); g.clip(); g.beginPath(); g.arc(cx, cy, t, 0, 7); g.fill(); g.restore();
+      }
+    } else if (kind === 4) { // bold stripes with a counter-stripe
+      const n = 7, sw = (w - 2 * m) / n;
+      for (let i = 0; i < n; i++) { g.fillStyle = cols[i % 3]; g.fillRect(m + i * sw, m, sw, h - 2 * m); }
+      g.fillStyle = ink; g.fillRect(m, h * 0.62, w - 2 * m, 16); g.fillStyle = css(pal.accent); g.fillRect(m, h * 0.3, w - 2 * m, 10);
+    } else { // lattice
+      g.strokeStyle = b; g.lineWidth = 8;
+      for (let i = -6; i < 12; i++) { g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64 + h, h); g.moveTo(i * 64 + h, 0); g.lineTo(i * 64, h); g.stroke(); }
+      g.fillStyle = c; for (let y = 0; y <= h; y += 32) for (let x = (y / 32) % 2 ? 32 : 0; x <= w; x += 64) { g.beginPath(); g.arc(x + 14, y + 10, 7, 0, 7); g.fill(); }
+    }
+    g.strokeStyle = ink; g.lineWidth = 12; g.strokeRect(6, 6, w - 12, h - 12);
+    g.strokeStyle = b; g.lineWidth = 7; g.strokeRect(20, 20, w - 40, h - 40);
+    g.fillStyle = 'rgba(255,255,255,0.5)'; for (let x = 4; x < w; x += 9) { g.fillRect(x, 0, 3, 8); g.fillRect(x, h - 8, 3, 8); }
+  });
+}
+
+// Modernist prints: hard-edged shapes and flat colour, in the spirit of the period's abstract art.
+export function artTex(pal, rng, w = 260, h = 360) {
+  const P = ['#d9792b', '#2f8f9c', '#d9a21b', '#c8473c', '#3d5a4a', '#2c3e50', '#e9e2cf', css(pal.accent), css(pal.fabric)];
+  const ink = '#221a14', paper = rng.pick(['#efe6cf', '#f4eede', '#e6dcc4']);
+  const col = () => rng.pick(P);
+  return canvasTex(w, h, (g) => {
+    g.fillStyle = paper; g.fillRect(0, 0, w, h);
+    const kind = rng.int(0, 5);
+    if (kind === 0) { // grid of primaries
+      const xs = [0, w * rng.range(0.25, 0.4), w * rng.range(0.6, 0.78), w], ys = [0, h * rng.range(0.2, 0.32), h * rng.range(0.5, 0.62), h * rng.range(0.78, 0.86), h];
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) { g.fillStyle = rng.chance(0.42) ? rng.pick(['#c8473c', '#d9a21b', '#2c4a8a', ink]) : paper; g.fillRect(xs[i], ys[j], xs[i + 1] - xs[i], ys[j + 1] - ys[j]); }
+      g.fillStyle = ink; xs.slice(1, 3).forEach((x) => g.fillRect(x - 5, 0, 10, h)); ys.slice(1, 4).forEach((y) => g.fillRect(0, y - 5, w, 10));
+    } else if (kind === 1) { // overlapping discs
+      g.globalCompositeOperation = 'multiply';
+      for (let i = 0; i < 6; i++) { g.fillStyle = col(); g.beginPath(); g.arc(rng.range(0.2, 0.8) * w, rng.range(0.15, 0.85) * h, rng.range(0.14, 0.34) * w, 0, 7); g.fill(); }
+      g.globalCompositeOperation = 'source-over';
+      g.strokeStyle = ink; g.lineWidth = 3; g.beginPath(); g.moveTo(w * 0.1, h * rng.range(0.2, 0.8)); g.lineTo(w * 0.9, h * rng.range(0.2, 0.8)); g.stroke();
+    } else if (kind === 2) { // nested squares
+      const base = rng.pick(['#d9792b', '#2f8f9c', '#c8473c', '#d9a21b']);
+      [1, 0.78, 0.56, 0.34].forEach((k, i) => { g.fillStyle = base; g.globalAlpha = 1; g.fillRect((w - w * 0.86 * k) / 2, h * 0.14 + (h * 0.72 - w * 0.86 * k) * 0.72, w * 0.86 * k, w * 0.86 * k); g.fillStyle = i % 2 ? '#000' : '#fff'; g.globalAlpha = 0.14 * i; g.fillRect((w - w * 0.86 * k) / 2, h * 0.14 + (h * 0.72 - w * 0.86 * k) * 0.72, w * 0.86 * k, w * 0.86 * k); });
+      g.globalAlpha = 1;
+    } else if (kind === 3) { // paper cut-outs
+      g.fillStyle = col(); g.fillRect(0, 0, w / 2, h / 2); g.fillStyle = col(); g.fillRect(w / 2, h / 2, w / 2, h / 2);
+      for (let i = 0; i < 5; i++) { // leaf-like blobs
+        const cx = rng.range(0.2, 0.8) * w, cy = rng.range(0.15, 0.85) * h, r = rng.range(26, 46), n = rng.int(5, 7), rot = rng.next() * 6;
+        g.fillStyle = col(); g.beginPath();
+        for (let k = 0; k <= n * 8; k++) { const t = (k / (n * 8)) * Math.PI * 2, rr = r * (0.62 + 0.38 * Math.cos(t * n)); g.lineTo(cx + Math.cos(t + rot) * rr, cy + Math.sin(t + rot) * rr * 1.25); }
+        g.fill();
+      }
+    } else if (kind === 4) { // wire and shapes
+      g.strokeStyle = ink; g.lineWidth = 2.5; g.beginPath(); g.moveTo(w * 0.15, h * 0.2);
+      const pts = []; for (let i = 0; i < 5; i++) { const x = rng.range(0.15, 0.85) * w, y = rng.range(0.15, 0.85) * h; pts.push([x, y]); g.lineTo(x, y); } g.stroke();
+      pts.forEach(([x, y], i) => { g.fillStyle = col(); g.beginPath(); if (i % 3 === 0) g.arc(x, y, rng.range(12, 30), 0, 7); else if (i % 3 === 1) { g.moveTo(x, y - 30); g.lineTo(x + 28, y + 22); g.lineTo(x - 28, y + 22); } else { g.ellipse(x, y, 40, 14, rng.next() * 3, 0, 7); } g.fill(); });
+      g.fillStyle = ink; g.beginPath(); g.arc(w * 0.15, h * 0.2, 7, 0, 7); g.fill();
+    } else { // stacked arcs: a hard-edged sun over hills
+      g.fillStyle = col(); g.fillRect(0, 0, w, h * 0.62);
+      g.fillStyle = paper; g.beginPath(); g.arc(w * rng.range(0.35, 0.65), h * 0.36, w * 0.22, 0, 7); g.fill();
+      ['#3d5a4a', '#2c3e50', '#d9792b', ink].forEach((cc, i) => { g.fillStyle = cc; g.beginPath(); g.ellipse(w * (0.2 + 0.2 * i + rng.range(-0.1, 0.1)), h * (0.74 + i * 0.09), w * 0.6, h * 0.2, 0, Math.PI, 0); g.lineTo(w, h); g.lineTo(0, h); g.fill(); });
+    }
   });
 }
 
 // Mid-century abstract paintings and simple landscapes.
 export function paintingTex(pal, rng) {
+  if (rng.chance(0.45)) return artTex(pal, rng, 256, 200);
   return canvasTex(256, 200, (g, w, h) => {
     const cols = ['#d9792b', '#2f8f9c', '#c9a227', '#c8473c', '#3d5a4a', '#e9e2cf', '#2c3e50', '#7c58a6'];
     const kind = rng.int(0, 2);
@@ -199,12 +266,20 @@ function wrap(g, text, maxW) {
 }
 
 // A written surface: paper, chalk on a blackboard, typed page. lines = clue text (or filler scribbles).
-export function textTex({ w = 512, h = 384, bg = '#f3ecd8', fg = '#2b2118', font = 'Georgia, serif', lines, symbol, size = 34, rng, chalk }) {
+export function textTex({ w = 512, h = 384, bg = '#f3ecd8', fg = '#2b2118', font = 'Georgia, serif', lines, symbol, size = 34, rng, chalk, tiny }) {
   return canvasTex(w, h, (g) => {
     g.fillStyle = bg; g.fillRect(0, 0, w, h);
     if (chalk) { for (let i = 0; i < 26; i++) { g.fillStyle = `rgba(255,255,255,${0.02 + rng.next() * 0.03})`; g.beginPath(); g.ellipse(rng.next() * w, rng.next() * h, 60 + rng.next() * 90, 14 + rng.next() * 22, rng.next() * 3, 0, 7); g.fill(); } }
     g.fillStyle = fg; g.textBaseline = 'top';
-    if (lines && lines.length) {
+    if (lines && lines.length && tiny) {
+      // tiny writing: a small dense block nobody could read without a lens
+      const bw = w * 0.2, bx = w * 0.56, by = h * 0.58;
+      g.globalAlpha = 0.75; for (let y = 0; y < 7; y++) g.fillRect(bx, by + y * 5, bw * (0.6 + rng.next() * 0.4), 1.6); g.globalAlpha = 1;
+      sticker(g, symbol, bx - 20, by + 16, 13);
+      g.globalAlpha = 0.5; g.lineWidth = 3; g.strokeStyle = fg;
+      for (let y = 40; y < h * 0.5; y += 44) { g.beginPath(); let x = 30; g.moveTo(x, y); const end = w * (0.5 + rng.next() * 0.42); while (x < end) { x += 10 + rng.next() * 18; g.lineTo(x, y + (rng.next() - 0.5) * 12); } g.stroke(); }
+      g.globalAlpha = 1;
+    } else if (lines && lines.length) {
       const pad = symbol ? 96 : 30;
       let wrapped;
       // shrink the lettering until everything fits on the surface
@@ -225,6 +300,24 @@ export function plaqueTex(colors, symbol, palette) {
     g.fillStyle = '#c9a54a'; g.fillRect(0, 0, w, h); g.strokeStyle = '#5a431a'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
     sticker(g, symbol, 50, 48, 34);
     colors.forEach((c, i) => { const x = 104 + i * 68; g.fillStyle = palette[c]; g.fillRect(x, 22, 50, 52); g.strokeStyle = '#2b2118'; g.lineWidth = 3; g.strokeRect(x, 22, 50, 52); if (i) { g.fillStyle = '#2b2118'; g.beginPath(); g.moveTo(x - 14, 38); g.lineTo(x - 4, 48); g.lineTo(x - 14, 58); g.fill(); } });
+  });
+}
+
+export function shaftTex(kind) {
+  return canvasTex(128, 196, (g, w, h) => {
+    g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+    const grad = g.createLinearGradient(0, 0, 0, h); grad.addColorStop(0, 'rgba(255,255,255,.95)'); grad.addColorStop(1, 'rgba(255,255,255,.15)');
+    g.fillStyle = grad;
+    if (kind === 'round') { g.beginPath(); g.ellipse(w / 2, h / 2, w * 0.4, h * 0.44, 0, 0, 7); g.fill(); }
+    else if (kind === 'blinds') { for (let y = 10; y < h - 8; y += 15) g.fillRect(10, y, w - 20, 8); }
+    else { for (const x of [10, w / 2 + 3]) for (const y of [10, h / 2 + 3]) g.fillRect(x, y, w / 2 - 13, h / 2 - 13); }
+    g.filter = 'blur(3px)'; g.drawImage(g.canvas, 0, 0);
+  });
+}
+export function signTex(text) {
+  return canvasTex(256, 96, (g, w, h) => {
+    g.fillStyle = '#3a0c08'; g.fillRect(0, 0, w, h); g.strokeStyle = '#1a0503'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
+    g.fillStyle = '#ffd9cf'; g.font = 'bold 54px "Gill Sans", "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w / 2, h / 2 + 3);
   });
 }
 
