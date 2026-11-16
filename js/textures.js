@@ -199,12 +199,20 @@ function wrap(g, text, maxW) {
 }
 
 // A written surface: paper, chalk on a blackboard, typed page. lines = clue text (or filler scribbles).
-export function textTex({ w = 512, h = 384, bg = '#f3ecd8', fg = '#2b2118', font = 'Georgia, serif', lines, symbol, size = 34, rng, chalk }) {
+export function textTex({ w = 512, h = 384, bg = '#f3ecd8', fg = '#2b2118', font = 'Georgia, serif', lines, symbol, size = 34, rng, chalk, tiny }) {
   return canvasTex(w, h, (g) => {
     g.fillStyle = bg; g.fillRect(0, 0, w, h);
     if (chalk) { for (let i = 0; i < 26; i++) { g.fillStyle = `rgba(255,255,255,${0.02 + rng.next() * 0.03})`; g.beginPath(); g.ellipse(rng.next() * w, rng.next() * h, 60 + rng.next() * 90, 14 + rng.next() * 22, rng.next() * 3, 0, 7); g.fill(); } }
     g.fillStyle = fg; g.textBaseline = 'top';
-    if (lines && lines.length) {
+    if (lines && lines.length && tiny) {
+      // tiny writing: a small dense block nobody could read without a lens
+      const bw = w * 0.2, bx = w * 0.56, by = h * 0.58;
+      g.globalAlpha = 0.75; for (let y = 0; y < 7; y++) g.fillRect(bx, by + y * 5, bw * (0.6 + rng.next() * 0.4), 1.6); g.globalAlpha = 1;
+      sticker(g, symbol, bx - 20, by + 16, 13);
+      g.globalAlpha = 0.5; g.lineWidth = 3; g.strokeStyle = fg;
+      for (let y = 40; y < h * 0.5; y += 44) { g.beginPath(); let x = 30; g.moveTo(x, y); const end = w * (0.5 + rng.next() * 0.42); while (x < end) { x += 10 + rng.next() * 18; g.lineTo(x, y + (rng.next() - 0.5) * 12); } g.stroke(); }
+      g.globalAlpha = 1;
+    } else if (lines && lines.length) {
       const pad = symbol ? 96 : 30;
       let wrapped;
       // shrink the lettering until everything fits on the surface
@@ -225,6 +233,24 @@ export function plaqueTex(colors, symbol, palette) {
     g.fillStyle = '#c9a54a'; g.fillRect(0, 0, w, h); g.strokeStyle = '#5a431a'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
     sticker(g, symbol, 50, 48, 34);
     colors.forEach((c, i) => { const x = 104 + i * 68; g.fillStyle = palette[c]; g.fillRect(x, 22, 50, 52); g.strokeStyle = '#2b2118'; g.lineWidth = 3; g.strokeRect(x, 22, 50, 52); if (i) { g.fillStyle = '#2b2118'; g.beginPath(); g.moveTo(x - 14, 38); g.lineTo(x - 4, 48); g.lineTo(x - 14, 58); g.fill(); } });
+  });
+}
+
+export function shaftTex(kind) {
+  return canvasTex(128, 196, (g, w, h) => {
+    g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+    const grad = g.createLinearGradient(0, 0, 0, h); grad.addColorStop(0, 'rgba(255,255,255,.95)'); grad.addColorStop(1, 'rgba(255,255,255,.15)');
+    g.fillStyle = grad;
+    if (kind === 'round') { g.beginPath(); g.ellipse(w / 2, h / 2, w * 0.4, h * 0.44, 0, 0, 7); g.fill(); }
+    else if (kind === 'blinds') { for (let y = 10; y < h - 8; y += 15) g.fillRect(10, y, w - 20, 8); }
+    else { for (const x of [10, w / 2 + 3]) for (const y of [10, h / 2 + 3]) g.fillRect(x, y, w / 2 - 13, h / 2 - 13); }
+    g.filter = 'blur(3px)'; g.drawImage(g.canvas, 0, 0);
+  });
+}
+export function signTex(text) {
+  return canvasTex(256, 96, (g, w, h) => {
+    g.fillStyle = '#3a0c08'; g.fillRect(0, 0, w, h); g.strokeStyle = '#1a0503'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
+    g.fillStyle = '#ffd9cf'; g.font = 'bold 54px "Gill Sans", "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w / 2, h / 2 + 3);
   });
 }
 

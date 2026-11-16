@@ -44,7 +44,12 @@ Clues rarely hand over a finished answer. The notebook is where they get worked 
 - **Old photograph.** A photo of the room as it used to be, beside the room as it is now. Spot the three things that have been disturbed; disturbed furniture can then be searched, and one piece hides something.
 - **Torn notes** are pieced together once both halves are found.
 - **Code words** can be crossed out one by one as the word clues rule them out.
+- **Reading aids.** A hidden blank sheet is a note in invisible ink: hold a match from the matchbook under it (inventory) and the message appears. Tiny writing on a surface needs the magnifying glass.
 - **Inventory tab.** Some keys and tools are broken in two. When you hold both halves they glow, and one click joins them.
+
+### Five settings, five moods
+
+Each setting has its own light, colour grade, ceiling fixture and room tone: rain and blind-striped street light in the detective's office with a slow ceiling fan; a ticking clock and amber dusk in the study; a red ON AIR glow and static at the radio station; cold strip lights and a mains hum in the lab; daylight through a brass porthole, engine throb and a gentle roll aboard the liner.
 
 ### Locks and puzzles
 
@@ -75,6 +80,7 @@ Clues rarely hand over a finished answer. The notebook is where they get worked 
 - Everything a lock needs is listed under "Needed to open it" with a dropdown for where it is placed.
 - **Photograph puzzle** adds or removes the spot-the-difference layer; the photo is retaken automatically when furniture moves.
 - A key or tool can be marked as broken in two halves.
+- Any note can be switched to invisible ink, and any written surface to tiny writing; the matchbook or magnifying glass is added and placed automatically.
 - **Check** shows live whether the room is escapable, lists any problems in plain language, and can reveal the full solution.
 - **Remix (SCAMPER)** applies one idea at a time while keeping the room solvable:
   **S**ubstitute furniture, **C**ombine (break a key or tear a note in two), **A**dapt a written code into the room (clock, books, radio),
@@ -108,6 +114,7 @@ Clues rarely hand over a finished answer. The notebook is where they get worked 
 
 Slots: `holds` (inside a container), `hidden` (in a hiding spot), `shown` (written on, or displayed by, a prop), `secret` (in furniture the photograph gives away).
 Lock types: `key`, `tool`, `digits`, `dial`, `wheel`, `merge`. Clue styles: `logic` (code-breaker), `plain`, `tornA`/`tornB`, `clock`, `books`, `radio`, `codebook`, `constraint`.
+A clue may carry `"needs": "matches" | "lens"`, in which case a matching `{ "kind": "aid", "aid": ... }` item must be findable.
 Other thing kinds: `key` / `tool` (with `"half": "a" | "b"` when broken), `shape`, and `photo`, which pairs with a top-level `"photo": { "cam": {...}, "diffs": [...] }` describing how the room looked before.
 Loading a manifest validates it; a level with problems opens in the workshop instead of the game.
 

@@ -4,7 +4,7 @@ import { SYMBOLS } from './symbols.js';
 import { textC, remaining } from './words.js';
 import { TIERS, solveMerge } from './mergepuzzle.js';
 import { THEMES } from './themes.js';
-import { FORMAT, propById, thingsFor, thingsAt, codeFits, slotFor, SLOT_CAP, placeTops, logicSolutions, photoDiff } from './levelops.js';
+import { FORMAT, propById, thingsFor, thingsAt, codeFits, slotFor, SLOT_CAP, placeTops, logicSolutions, photoDiff, readable, needFor, AIDS } from './levelops.js';
 
 export const propName = (p) => CATALOG[p.type].name.toLowerCase();
 const symName = (lock) => (lock && lock.symbol ? SYMBOLS[lock.symbol].name : '');
@@ -14,6 +14,9 @@ const dialText = (c) => `Right to ${c[0]}  ·  Left to ${c[1]}  ·  Right to ${c
 // Human description of any thing: { name, title, lines[], symbol, note }
 export const logicLine = (r) => `${r.g.split('').join(' ')}    ${r.hit + r.near ? '●'.repeat(r.hit) + '○'.repeat(r.near) : 'none'}`;
 export function thingInfo(level, t) {
+  if (t.kind === 'aid') return t.aid === 'matches'
+    ? { name: 'Matchbook', title: 'Matchbook', lines: ['A matchbook with a few matches left.', 'A flame held under a blank sheet can bring out writing in invisible ink.'] }
+    : { name: 'Magnifying glass', title: 'Magnifying glass', lines: ['A brass-rimmed magnifying glass.', 'With it you can read writing that is too tiny for the naked eye.'] };
   if (t.kind === 'photo') return { name: 'Old photograph', title: 'Old photograph', lines: ['A photograph of this very room, taken some time ago.', 'Three things have been disturbed since. Study it in your notebook.'] };
   const owner = propById(level, t.for);
   const lock = owner && owner.lock;
@@ -96,7 +99,7 @@ export function canUnlock(level, prop, known) {
   const lock = prop.lock;
   if (!lock) return { ok: true, missing: [] };
   const mine = thingsFor(level, prop.id);
-  const have = (pred) => mine.some((t) => pred(t) && known.has(t.id));
+  const have = (pred) => mine.some((t) => pred(t) && known.has(t.id) && readable(level, t, known));
   const all = (kind) => { const k = mine.filter((t) => t.kind === kind); return k.length && k.every((t) => known.has(t.id)); };
   const missing = [];
   if (lock.type === 'key') { if (!all('key')) missing.push(lock.split ? `both halves of the ${symName(lock).toLowerCase()} key` : `the ${symName(lock).toLowerCase()} key`); }
@@ -106,7 +109,7 @@ export function canUnlock(level, prop, known) {
     if (!(st('plain') || st('logic') || st('clock') || st('books') || st('radio') || (st('tornA') && st('tornB')))) missing.push(mine.some((t) => t.style === 'tornA') ? 'both halves of the torn note' : 'the combination');
   } else if (lock.type === 'wheel') {
     if (!have((t) => t.style === 'codebook')) missing.push('the list of code words');
-    const cons = mine.filter((t) => t.style === 'constraint' && known.has(t.id)).map((t) => lock.constraints[t.idx]);
+    const cons = mine.filter((t) => t.style === 'constraint' && known.has(t.id) && readable(level, t, known)).map((t) => lock.constraints[t.idx]);
     const left = remaining(lock.candidates, cons);
     if (left.length !== 1 || left[0] !== lock.word) missing.push(`more word clues (${left.length} words still fit)`);
   } else if (lock.type === 'merge') {
@@ -121,7 +124,7 @@ export function possibleActions(level, prog) {
   const out = [];
   for (const p of level.props) {
     const cat = CATALOG[p.type];
-    const shown = thingsAt(level, p.id, 'shown').filter((t) => !prog.known.has(t.id));
+    const shown = thingsAt(level, p.id, 'shown').filter((t) => !prog.known.has(t.id) && readable(level, t, prog.known));
     if (shown.length) out.push({ type: 'observe', prop: p, gains: shown });
     if (cat.hide && !prog.searched.has(p.id)) { const g = thingsAt(level, p.id, 'hidden'); if (g.length) out.push({ type: 'search', prop: p, gains: g }); }
     // disturbed furniture can only be searched once the photograph has given it away
@@ -141,9 +144,9 @@ export function applyAction(prog, a) {
 }
 
 function stepText(level, a) {
-  const names = a.gains.map((t) => thingInfo(level, t).name.toLowerCase()).join(', ');
+  const names = a.gains.map((t) => thingInfo(level, t).name.toLowerCase() + (t.needs === 'matches' ? ' (it looks blank: warm it with the matchbook to read it)' : '')).join(', ');
   const cat = CATALOG[a.prop.type];
-  if (a.type === 'observe') return `Examine the ${propName(a.prop)}: ${thingInfo(level, a.gains[0]).lines.join(' ')}`;
+  if (a.type === 'observe') return `Examine the ${propName(a.prop)}${a.gains[0].needs ? ' through the magnifying glass' : ''}: ${thingInfo(level, a.gains[0]).lines.join(' ')}`;
   if (a.type === 'search') return `${cat.hide} → find ${names}.`;
   if (a.type === 'secret') return `Compare the photograph with the room: the ${propName(a.prop)} has been disturbed. Search it → find ${names}.`;
   const how = a.prop.lock ? `Open the ${propName(a.prop)} (${lockSummary(level, a.prop)})` : `Open the ${propName(a.prop)}`;
@@ -297,9 +300,12 @@ export function checkLevel(level) {
   if (!!level.photo !== level.things.some((t) => t.kind === 'photo')) errors.push('The photograph puzzle is incomplete. Remove it and add it again.');
   for (const t of level.things) {
     const owner = propById(level, t.for);
-    if (t.kind !== 'photo' && (!owner || !owner.lock)) { errors.push('A clue or item belongs to a lock that no longer exists.'); continue; }
+    const loose = t.kind === 'photo' || t.kind === 'aid';
+    if (t.needs && (!t.at || needFor(t) !== t.needs)) errors.push(`"${thingInfo(level, t).name}" is set to need the ${AIDS[t.needs].toLowerCase()}, which only works for ${t.needs === 'lens' ? 'writing on a surface' : 'a paper note'}.`);
+    if (t.needs && !level.things.some((a) => a.kind === 'aid' && a.aid === t.needs)) errors.push(`A clue needs the ${AIDS[t.needs].toLowerCase()}, but there is none in the room.`);
+    if (!loose && (!owner || !owner.lock)) { errors.push('A clue or item belongs to a lock that no longer exists.'); continue; }
     const name = thingInfo(level, t).name;
-    if (!t.at) { errors.push(t.kind === 'photo' ? 'The old photograph has not been placed anywhere.' : `"${name}" for the ${propName(owner)} has not been placed anywhere.`); continue; }
+    if (!t.at) { errors.push(loose ? `The ${name.toLowerCase()} has not been placed anywhere.` : `"${name}" for the ${propName(owner)} has not been placed anywhere.`); continue; }
     const host = propById(level, t.at.prop);
     if (!host) { errors.push(`"${name}" is placed on a prop that no longer exists.`); continue; }
     if (slotFor(t, host, level) !== t.at.slot) { errors.push(`"${name}" cannot be placed at the ${propName(host)}.`); continue; }
@@ -336,7 +342,7 @@ export function parseLevel(text) {
   if (!THEMES[level.theme]) level.theme = 'detective';
   level.room = { w: Math.min(14, Math.max(4, +level.room.w || 7)), d: Math.min(14, Math.max(4, +level.room.d || 6)), h: 3 };
   level.props = level.props.filter((p) => p && CATALOG[p.type] && typeof p.id === 'string').map((p) => ({ ...p, x: +p.x || 0, z: +p.z || 0, rot: ((+p.rot || 0) % 4 + 4) % 4 }));
-  level.things = level.things.filter((t) => t && typeof t.id === 'string' && ['key', 'tool', 'shape', 'clue', 'photo'].includes(t.kind));
+  level.things = level.things.filter((t) => t && typeof t.id === 'string' && ['key', 'tool', 'shape', 'clue', 'photo', 'aid'].includes(t.kind));
   level.name = String(level.name || 'Untitled room').slice(0, 60);
   level.n = Math.max(level.n || 0, ...[...level.props, ...level.things].map((o) => +String(o.id).slice(1) || 0));
   return level;

@@ -251,6 +251,24 @@ export function slotFor(thing, prop, level) {
   if (cat.inscribe && thing.kind === 'clue' && ['plain', 'logic', 'codebook', 'constraint'].includes(thing.style)) return 'shown';
   return null;
 }
+// Reading aids: a clue can need the matchbook (invisible ink on a note) or the magnifying glass
+// (tiny writing on a surface). The aid items exist exactly when some clue needs them.
+export const AIDS = { matches: 'Matchbook', lens: 'Magnifying glass' };
+export function needFor(thing) {
+  if (thing.kind !== 'clue' || !thing.at || ['clock', 'books', 'radio'].includes(thing.style)) return null;
+  return thing.at.slot === 'shown' ? 'lens' : 'matches';
+}
+export function ensureAids(level) {
+  const made = [];
+  for (const aid in AIDS) {
+    const wanted = level.things.some((t) => t.needs === aid), have = level.things.find((t) => t.kind === 'aid' && t.aid === aid);
+    if (wanted && !have) made.push(addThing(level, { kind: 'aid', aid }));
+    if (!wanted && have) level.things = level.things.filter((t) => t !== have);
+  }
+  return made;
+}
+export const readable = (level, t, known) => !t.needs || level.things.some((a) => a.kind === 'aid' && a.aid === t.needs && known.has(a.id));
+
 export const SLOT_CAP = { holds: 4, hidden: 2, shown: 1, secret: 1 };
 
 // Table-top props follow their host.

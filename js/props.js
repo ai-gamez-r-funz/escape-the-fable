@@ -39,6 +39,14 @@ B.door = (g, K, c, U) => {
 
 B.window = (g, K, c, U, ctx) => {
   const view = ctx.theme.view === 'none' ? null : TX.viewTex(ctx.theme.view, ctx.rng);
+  if (ctx.theme.view === 'sea') {
+    // ship's porthole
+    const glass = mesh(g, new THREE.CircleGeometry(0.46, 40), K.T(view, { emissive: 0xffffff, emissiveMap: view, emissiveIntensity: 0.75 }), 0, 0.65, -0.02); glass.castShadow = false;
+    mesh(g, new THREE.TorusGeometry(0.49, 0.06, 10, 40), K.brass, 0, 0.65, 0);
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.39; sph(g, K.brass, 0.022, Math.cos(a) * 0.49, 0.65 + Math.sin(a) * 0.49, 0.055, 8); }
+    box(g, K.brass, 0.07, 0.12, 0.05, 0.56, 0.59, 0.01);
+    return;
+  }
   plane(g, view ? K.T(view, { emissive: 0xffffff, emissiveMap: view, emissiveIntensity: 0.55 }) : K.M(0x9fb6b8, 0.3), 1.18, 1.18, 0, 0.65, -0.03);
   for (const x of [-0.62, 0.62]) box(g, K.cream, 0.07, 1.3, 0.1, x, 0);
   for (const y of [0, 1.23]) box(g, K.cream, 1.3, 0.07, 0.1, 0, y);
@@ -265,7 +273,7 @@ B.gramophone = (g, K, c, U) => {
 
 function writing(K, ctx, opts) {
   const info = ctx.shown ? thingInfo(ctx.level, ctx.shown) : null;
-  return K.T(TX.textTex({ ...opts, rng: ctx.rng, lines: info && info.lines, symbol: info && info.symbol }));
+  return K.T(TX.textTex({ ...opts, rng: ctx.rng, lines: info && info.lines, symbol: info && info.symbol, tiny: !!(ctx.shown && ctx.shown.needs) }));
 }
 B.blackboard = (g, K, c, U, ctx) => {
   box(g, K.wood, 1.7, 1.05, 0.04, 0, 0, -0.02);

@@ -2,6 +2,7 @@
 // the template decides which furniture carries it and how the room is dressed.
 export const THEMES = {
   detective: {
+    mood: { hemi: 0.5, amb: 0.14, lamp: 0.62, lampColor: 0xffc98a, exposure: 0.98, fog: [0x141a20, 0.04], vignette: 0.8, tint: 'rgba(40,70,120,.14)', fixture: 'fan', shaft: [0x9db8ff, 'blinds'], sound: 'rain' },
     name: "The Gumshoe's Office", year: 1947, tagline: 'Rain on the glass. A case gone cold.',
     intro: 'You came to the private eye\'s office for answers. The door clicked shut behind you, and the detective is nowhere to be seen. Everything you need to get out is in this room.',
     outro: 'The lock gives. You step out into the wet neon night, case closed.',
@@ -13,6 +14,7 @@ export const THEMES = {
     titles: [['Cold', 'Crooked', 'Midnight', 'Silent', 'Double'], ['Case', 'Alibi', 'Stakeout', 'Tail', 'Cross']],
   },
   study: {
+    mood: { hemi: 0.62, amb: 0.16, lamp: 0.72, lampColor: 0xffc27a, exposure: 1.0, fog: [0x24140c, 0.03], vignette: 0.65, tint: 'rgba(255,160,70,.10)', fixture: 'pendant', shaft: [0xffb878, 'panes'], sound: 'clock' },
     name: "The Professor's Study", year: 1953, tagline: 'Pipe smoke, old paper and one last riddle.',
     intro: 'The professor always said the best lessons are locked away. Tonight the study door has locked itself behind you, and the old man has left a trail of clues to see if you were listening.',
     outro: 'The door swings wide. Somewhere, the professor is smiling.',
@@ -24,6 +26,7 @@ export const THEMES = {
     titles: [['Last', 'Hidden', 'Final', 'Curious', 'Forgotten'], ['Lecture', 'Thesis', 'Lesson', 'Folio', 'Riddle']],
   },
   radio: {
+    mood: { hemi: 0.8, amb: 0.22, lamp: 0.8, lampColor: 0xfff0d0, exposure: 1.0, fog: [0x10262a, 0.022], vignette: 0.55, tint: 'rgba(60,200,200,.07)', fixture: 'pendant', shaft: [0x9db8ff, 'panes'], onAir: true, sound: 'static' },
     name: 'Station WFBL', year: 1956, tagline: 'Dead air at midnight.',
     intro: 'The ON AIR light went dark an hour ago and the night engineer has vanished, leaving the studio door bolted. The show must go on, but first you need to get out.',
     outro: 'The bolt slides back. Out in the corridor, a transmitter hums back to life.',
@@ -35,6 +38,7 @@ export const THEMES = {
     titles: [['Dead', 'Late', 'Static', 'Midnight', 'Lost'], ['Air', 'Broadcast', 'Signal', 'Frequency', 'Serenade']],
   },
   lab: {
+    mood: { hemi: 1.2, amb: 0.4, lamp: 1.0, lampColor: 0xf0faff, exposure: 1.06, fog: null, vignette: 0.3, tint: 'rgba(170,255,215,.07)', fixture: 'strips', sound: 'hum' },
     name: 'Atomic Research Lab 7', year: 1958, tagline: 'Authorised personnel only.',
     intro: 'A drill, they said. But the blast door of Lab 7 has sealed with you inside and the intercom is silent. The scientists here trusted logic above all. Use it.',
     outro: 'The seal hisses open. Daylight never looked so good.',
@@ -46,6 +50,7 @@ export const THEMES = {
     titles: [['Critical', 'Sealed', 'Unstable', 'Classified', 'Chain'], ['Reaction', 'Experiment', 'Formula', 'Isotope', 'Protocol']],
   },
   liner: {
+    mood: { hemi: 1.05, amb: 0.32, lamp: 0.85, lampColor: 0xfff2d6, exposure: 1.05, fog: null, vignette: 0.4, tint: 'rgba(255,215,140,.08)', fixture: 'dome', shaft: [0xfff2c0, 'round'], sway: 1, sound: 'sea' },
     name: 'Cabin 12, S.S. Fable', year: 1952, tagline: 'Three days out of Southampton.',
     intro: 'You woke to the throb of engines and a cabin door that will not budge. The purser\'s idea of a joke, perhaps. The previous passenger left in a hurry, and left plenty behind.',
     outro: 'The cabin door opens onto salt air and a wide Atlantic morning.',
@@ -61,7 +66,7 @@ for (const id in THEMES) THEMES[id].id = id;
 export const THEME_IDS = Object.keys(THEMES);
 
 export const DIFFICULTY = {
-  easy: { name: 'Easy', locks: [3, 3], digits: [3, 3], cands: 4, cons: 2, merge: 0, sockets: [1, 1], torn: 0.15, split: 0.15, photo: 0.4 },
-  medium: { name: 'Medium', locks: [4, 5], digits: [3, 4], cands: 5, cons: 2, merge: 1, sockets: [1, 2], torn: 0.35, split: 0.4, photo: 0.75 },
-  hard: { name: 'Hard', locks: [6, 7], digits: [4, 4], cands: 6, cons: 3, merge: 2, sockets: [2, 3], torn: 0.5, split: 0.6, photo: 0.9 },
+  easy: { name: 'Easy', locks: [3, 3], digits: [3, 3], cands: 4, cons: 2, merge: 0, sockets: [1, 1], torn: 0.15, split: 0.15, photo: 0.4, aid: 0.25 },
+  medium: { name: 'Medium', locks: [4, 5], digits: [3, 4], cands: 5, cons: 2, merge: 1, sockets: [1, 2], torn: 0.35, split: 0.4, photo: 0.75, aid: 0.6 },
+  hard: { name: 'Hard', locks: [6, 7], digits: [4, 4], cands: 6, cons: 3, merge: 2, sockets: [2, 3], torn: 0.5, split: 0.6, photo: 0.9, aid: 0.85 },
 };

@@ -28,6 +28,8 @@ select, input[type=text], input[type=number] { font: inherit; color: var(--ink);
 .row { display: flex; gap: .7em; justify-content: center; align-items: center; flex-wrap: wrap; margin: .8em 0 .4em; }
 .col { display: flex; flex-direction: column; gap: .5em; }
 
+#grade { position: fixed; inset: 0; pointer-events: none; }
+
 /* ---------- menu */
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: flex-start; padding: 4vmin 6vmin; background: linear-gradient(90deg, rgba(13, 12, 11, .78), rgba(13, 12, 11, .15) 70%); overflow: auto; }
 .menu-card { width: min(520px, 100%); background: var(--cream); border: 3px solid var(--ink); border-radius: 16px; padding: 2rem 2.1rem 1.4rem; box-shadow: 10px 10px 0 rgba(0, 0, 0, .55); }

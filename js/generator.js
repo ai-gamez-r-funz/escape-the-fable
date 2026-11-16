@@ -5,7 +5,7 @@
 import { RNG, hashStr, randomSeed } from './rng.js';
 import { CATALOG, rectOf, FRONT, overlap } from './catalog.js';
 import { THEMES, THEME_IDS, DIFFICULTY } from './themes.js';
-import { newLevel, addProp, setLock, setClueStyle, setSplit, clearLock, removeProp, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP, addPhoto, removePhoto } from './levelops.js';
+import { newLevel, addProp, setLock, setClueStyle, setSplit, clearLock, removeProp, thingsFor, thingsAt, propById, placeTops, slotFor, SLOT_CAP, addPhoto, removePhoto, ensureAids, needFor } from './levelops.js';
 import { checkLevel, checkLayout, snapToWall } from './manifest.js';
 
 const HOST_CAP = { desk: 3, lab_bench: 4, side_table: 1 };
@@ -21,6 +21,8 @@ export function generate(opts = {}) {
     if (!level || !layoutLevel(level, rng)) continue;
     if (!checkLevel(level).ok) continue;
     if (rng.chance(DIFFICULTY[difficulty].photo)) hidePhoto(level, rng);
+    if (rng.chance(DIFFICULTY[difficulty].aid)) addAid(level, rng, 'matches');
+    if (rng.chance(DIFFICULTY[difficulty].aid * 0.7)) addAid(level, rng, 'lens');
     level.seed = seed;
     level.gen = { seed, theme, difficulty };
     return level;
@@ -41,6 +43,24 @@ export function hidePhoto(level, rng) {
   photo.at = was;
   if (checkLevel(level).ok) return true;
   thing.at = was; removePhoto(level);
+  return false;
+}
+
+// Makes one clue unreadable without an aid (invisible ink / tiny writing) and hides the aid
+// somewhere that keeps the room solvable.
+export function addAid(level, rng, aid) {
+  if (level.things.some((t) => t.needs === aid)) return false;
+  const clue = rng.shuffle(level.things.filter((t) => needFor(t) === aid && !(aid === 'lens' && propById(level, t.at.prop).type === 'blackboard')))[0];
+  if (!clue) return false;
+  clue.needs = aid;
+  const [item] = ensureAids(level);
+  const spots = rng.shuffle(level.props.filter((p) => { const sl = slotFor(item, p); return sl && thingsAt(level, p.id, sl).length < SLOT_CAP[sl] && p.id !== clue.at.prop; }))
+    .sort((a, b) => thingsAt(level, a.id).length - thingsAt(level, b.id).length);
+  for (const p of spots.slice(0, 8)) {
+    item.at = { prop: p.id, slot: slotFor(item, p) };
+    if (checkLevel(level).ok) return true;
+  }
+  delete clue.needs; ensureAids(level);
   return false;
 }
 
@@ -367,7 +387,7 @@ export function scamper(level, op, seed = randomSeed()) {
     const copy = clone(level);
     delete copy.gen;
     const rng = new RNG(hashStr(`${op}/${seed}/${i}`));
-    try { if (SCAMPER[op].run(copy, rng)) { refreshPhoto(copy, rng); if (checkLevel(copy).ok) return copy; } } catch (e) { /* try another variation */ }
+    try { if (SCAMPER[op].run(copy, rng)) { ensureAids(copy); refreshPhoto(copy, rng); if (checkLevel(copy).ok) return copy; } } catch (e) { /* try another variation */ }
   }
   return null;
 }

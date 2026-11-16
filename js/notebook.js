@@ -13,7 +13,7 @@ const list = (a) => (a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.le
 // ---------------------------------------------------------------- what still needs the player's attention
 export function pending(game) {
   const L = game.level, known = (t) => game.prog.known.has(t.id), open = (pid) => game.prog.opened.has(pid);
-  const clues = L.things.filter((t) => known(t) && t.kind === 'clue' && !open(t.for));
+  const clues = L.things.filter((t) => known(t) && t.kind === 'clue' && game.notes.includes(t.id) && !open(t.for));
   let notes = 0;
   for (const t of clues) {
     if (t.style === 'logic' && !game.worked.has(t.id)) notes++;
@@ -138,9 +138,9 @@ function cluesTab(game, redraw) {
 function itemsTab(game, redraw) {
   const items = game.items();
   if (!items.length) return [el('p', { class: 'sub' }, 'Your pockets are empty. Keys, tools and carved pieces you pick up appear here.')];
-  return [el('p', { class: 'sub' }, 'Some finds are only half of something. When you hold both halves, a glowing button lets you join them.'), el('div', { class: 'items' }, items.map((it) => el('div', { class: 'item' + (it.partner ? ' can' : '') },
+  return [el('p', { class: 'sub' }, 'Some finds only work together. When you hold two things that belong together, a glowing button lets you combine them.'), el('div', { class: 'items' }, items.map((it) => el('div', { class: 'item' + (it.partner ? ' can' : '') },
     el('span', { class: 'bigicon', html: thingIcon(it.t, it.info, 56) }), el('h4', {}, it.info.symbol ? el('span', { html: symbolSVG(it.info.symbol, 18) + ' ' }) : null, it.info.name), el('p', {}, it.info.lines[0]),
-    it.partner ? el('button', { class: 'btn small glow', onclick: () => { game.join(it.t.for); redraw(); } }, `Join with the ${it.partner.name.toLowerCase()}`) : it.t.half ? el('p', { class: 'tiny' }, 'The other half is still out there somewhere.') : it.t.kind === 'shape' ? el('p', { class: 'tiny' }, 'Fits the merge tray carrying the same mark.') : el('p', { class: 'tiny' }, 'Used automatically at the lock or obstacle it fits.'))))];
+    it.partner ? el('button', { class: 'btn small glow', onclick: () => { it.act(); redraw(); } }, it.verb || `Join with the ${it.partner.name.toLowerCase()}`) : it.idle ? el('p', { class: 'tiny' }, it.idle) : it.t.half ? el('p', { class: 'tiny' }, 'The other half is still out there somewhere.') : it.t.kind === 'shape' ? el('p', { class: 'tiny' }, 'Fits the merge tray carrying the same mark.') : el('p', { class: 'tiny' }, 'Used automatically at the lock or obstacle it fits.'))))];
 }
 
 function locksTab(game) {
